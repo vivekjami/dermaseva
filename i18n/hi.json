@@ -1,0 +1,18 @@
+{
+  "onboarding.pickLanguage": "अपनी भाषा चुनें",
+  "onboarding.workerType": "मैं हूँ...",
+  "workerType.asha": "आशा कार्यकर्ता",
+  "workerType.anganwadi": "आंगनवाड़ी कार्यकर्ता",
+  "workerType.general": "सामान्य स्वास्थ्य कार्यकर्ता",
+  "camera.instruction": "त्वचा क्षेत्र की स्पष्ट फ़ोटो लें",
+  "result.condition": "संभावित स्थिति",
+  "result.confidence": "विश्वास",
+  "result.otcSuggestion": "सामान्य उपाय",
+  "result.disclaimer": "यह एक AI-सहायता प्राप्त जांच उपकरण है, निदान नहीं।",
+  "result.seeDoctor": "डॉक्टर से मिलें",
+  "result.severity.mild": "हल्का",
+  "result.severity.moderate": "मध्यम — जल्द डॉक्टर से मिलें",
+  "result.severity.severe": "गंभीर — तुरंत रेफर करें",
+  "history.title": "केस इतिहास",
+  "history.empty": "अभी तक कोई केस दर्ज नहीं"
+}

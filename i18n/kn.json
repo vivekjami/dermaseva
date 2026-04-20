@@ -1,0 +1,18 @@
+{
+  "onboarding.pickLanguage": "ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ",
+  "onboarding.workerType": "ನಾನು...",
+  "workerType.asha": "ಆಶಾ ಕಾರ್ಯಕರ್ತ",
+  "workerType.anganwadi": "ಅಂಗನವಾಡಿ ಕಾರ್ಯಕರ್ತ",
+  "workerType.general": "ಸಾಮಾನ್ಯ ಆರೋಗ್ಯ ಕಾರ್ಯಕರ್ತ",
+  "camera.instruction": "ಚರ್ಮದ ಪ್ರದೇಶದ ಸ್ಪಷ್ಟ ಫೋಟೋ ತೆಗೆಯಿರಿ",
+  "result.condition": "ಸಂಭಾವ್ಯ ಸ್ಥಿತಿ",
+  "result.confidence": "ವಿಶ್ವಾಸ",
+  "result.otcSuggestion": "ಸಾಮಾನ್ಯ ಪರಿಹಾರ",
+  "result.disclaimer": "ಇದು AI-ಸಹಾಯಿತ ಸ್ಕ್ರೀನಿಂಗ್ ಉಪಕರಣ, ರೋಗನಿರ್ಣಯವಲ್ಲ.",
+  "result.seeDoctor": "ವೈದ್ಯರನ್ನು ನೋಡಿ",
+  "result.severity.mild": "ಸೌಮ್ಯ",
+  "result.severity.moderate": "ಮಧ್ಯಮ — ಶೀಘ್ರದಲ್ಲಿ ವೈದ್ಯರನ್ನು ಸಂಪರ್ಕಿಸಿ",
+  "result.severity.severe": "ತೀವ್ರ — ತಕ್ಷಣ ರೆಫರ್ ಮಾಡಿ",
+  "history.title": "ಕೇಸ್ ಇತಿಹಾಸ",
+  "history.empty": "ಇನ್ನು ಯಾವುದೇ ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿಲ್ಲ"
+}
