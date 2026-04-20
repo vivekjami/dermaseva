@@ -1,0 +1,18 @@
+{
+  "onboarding.pickLanguage": "Select your language",
+  "onboarding.workerType": "I am a...",
+  "workerType.asha": "ASHA Worker",
+  "workerType.anganwadi": "Anganwadi Worker",
+  "workerType.general": "General Health Worker",
+  "camera.instruction": "Take a clear photo of the skin area",
+  "result.condition": "Possible condition",
+  "result.confidence": "Confidence",
+  "result.otcSuggestion": "Common remedy",
+  "result.disclaimer": "This is an AI-assisted screening tool, not a diagnosis.",
+  "result.seeDoctor": "See a Doctor",
+  "result.severity.mild": "Mild",
+  "result.severity.moderate": "Moderate — consult a doctor soon",
+  "result.severity.severe": "Severe — refer immediately",
+  "history.title": "Case History",
+  "history.empty": "No cases recorded yet"
+}
