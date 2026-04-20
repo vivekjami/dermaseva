@@ -1,0 +1,18 @@
+{
+  "onboarding.pickLanguage": "உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்",
+  "onboarding.workerType": "நான்...",
+  "workerType.asha": "ஆஷா பணியாளர்",
+  "workerType.anganwadi": "அங்கன்வாடி பணியாளர்",
+  "workerType.general": "பொது சுகாதார பணியாளர்",
+  "camera.instruction": "தோல் பகுதியின் தெளிவான புகைப்படம் எடுக்கவும்",
+  "result.condition": "சாத்தியமான நிலை",
+  "result.confidence": "நம்பகத்தன்மை",
+  "result.otcSuggestion": "பொதுவான தீர்வு",
+  "result.disclaimer": "இது AI-உதவி ஸ்கிரீனிங் கருவி, நோயறிதல் அல்ல.",
+  "result.seeDoctor": "மருத்துவரை பாருங்கள்",
+  "result.severity.mild": "லேசான",
+  "result.severity.moderate": "மிதமான — விரைவில் மருத்துவரை அணுகவும்",
+  "result.severity.severe": "கடுமையான — உடனே பரிந்துரைக்கவும்",
+  "history.title": "வழக்கு வரலாறு",
+  "history.empty": "இன்னும் எந்த வழக்கும் பதிவு செய்யப்படவில்லை"
+}

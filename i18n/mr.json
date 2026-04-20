@@ -1,0 +1,18 @@
+{
+  "onboarding.pickLanguage": "आपली भाषा निवडा",
+  "onboarding.workerType": "मी आहे...",
+  "workerType.asha": "आशा कार्यकर्ता",
+  "workerType.anganwadi": "अंगणवाडी कार्यकर्ता",
+  "workerType.general": "सामान्य आरोग्य कार्यकर्ता",
+  "camera.instruction": "त्वचेच्या भागाचा स्पष्ट फोटो घ्या",
+  "result.condition": "संभाव्य स्थिती",
+  "result.confidence": "विश्वास",
+  "result.otcSuggestion": "सामान्य उपाय",
+  "result.disclaimer": "हे एक AI-सहाय्यित तपासणी साधन आहे, निदान नाही.",
+  "result.seeDoctor": "डॉक्टरांना भेटा",
+  "result.severity.mild": "सौम्य",
+  "result.severity.moderate": "मध्यम — लवकर डॉक्टरांना भेटा",
+  "result.severity.severe": "गंभीर — ताबडतोब रेफर करा",
+  "history.title": "केस इतिहास",
+  "history.empty": "अद्याप कोणतेही केस नोंदवलेले नाहीत"
+}

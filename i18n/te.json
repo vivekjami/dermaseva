@@ -1,0 +1,18 @@
+{
+  "onboarding.pickLanguage": "మీ భాషను ఎంచుకోండి",
+  "onboarding.workerType": "నేను...",
+  "workerType.asha": "ఆశా వర్కర్",
+  "workerType.anganwadi": "అంగన్‌వాడీ వర్కర్",
+  "workerType.general": "సాధారణ ఆరోగ్య కార్యకర్త",
+  "camera.instruction": "చర్మ ప్రాంతం యొక్క స్పష్టమైన ఫోటో తీయండి",
+  "result.condition": "సాధ్యమయ్యే పరిస్థితి",
+  "result.confidence": "విశ్వాసం",
+  "result.otcSuggestion": "సాధారణ నివారణ",
+  "result.disclaimer": "ఇది AI-సహాయక స్క్రీనింగ్ సాధనం, రోగనిర్ధారణ కాదు.",
+  "result.seeDoctor": "డాక్టర్‌ని చూడండి",
+  "result.severity.mild": "తేలికపాటి",
+  "result.severity.moderate": "మధ్యస్థం — త్వరలో డాక్టర్‌ని సంప్రదించండి",
+  "result.severity.severe": "తీవ్రమైన — వెంటనే రిఫర్ చేయండి",
+  "history.title": "కేసు చరిత్ర",
+  "history.empty": "ఇంకా కేసులు నమోదు కాలేదు"
+}
