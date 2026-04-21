@@ -14,5 +14,11 @@
   "result.severity.moderate": "Moderate — consult a doctor soon",
   "result.severity.severe": "Severe — refer immediately",
   "history.title": "Case History",
-  "history.empty": "No cases recorded yet"
+  "history.empty": "No cases recorded yet",
+  "history": {
+    "title": "Case History",
+    "empty": "No cases recorded yet",
+    "deleted": "Case deleted",
+    "cleared": "All cases cleared"
+  }
 }

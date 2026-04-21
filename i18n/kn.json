@@ -14,5 +14,11 @@
   "result.severity.moderate": "ಮಧ್ಯಮ — ಶೀಘ್ರದಲ್ಲಿ ವೈದ್ಯರನ್ನು ಸಂಪರ್ಕಿಸಿ",
   "result.severity.severe": "ತೀವ್ರ — ತಕ್ಷಣ ರೆಫರ್ ಮಾಡಿ",
   "history.title": "ಕೇಸ್ ಇತಿಹಾಸ",
-  "history.empty": "ಇನ್ನು ಯಾವುದೇ ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿಲ್ಲ"
+  "history.empty": "ಇನ್ನು ಯಾವುದೇ ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿಲ್ಲ",
+  "history": {
+    "title": "Case History",
+    "empty": "No cases recorded yet",
+    "deleted": "Case deleted",
+    "cleared": "All cases cleared"
+  }
 }

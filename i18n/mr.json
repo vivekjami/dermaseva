@@ -14,5 +14,11 @@
   "result.severity.moderate": "मध्यम — लवकर डॉक्टरांना भेटा",
   "result.severity.severe": "गंभीर — ताबडतोब रेफर करा",
   "history.title": "केस इतिहास",
-  "history.empty": "अद्याप कोणतेही केस नोंदवलेले नाहीत"
+  "history.empty": "अद्याप कोणतेही केस नोंदवलेले नाहीत",
+  "history": {
+    "title": "Case History",
+    "empty": "No cases recorded yet",
+    "deleted": "Case deleted",
+    "cleared": "All cases cleared"
+  }
 }

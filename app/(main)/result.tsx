@@ -20,6 +20,8 @@ import { getReferralDecision } from '@/modules/safety/referral-logic';
 import { ReferralCTA } from '@/components/ReferralCTA';
 import { SafetyBanner } from '@/components/SafetyBanner';
 import { OtcCard } from '@/components/OtcCard';
+import { saveCase } from '@/modules/db/case-store';
+import { makeThumbnail, deleteOriginal } from '@/modules/db/thumbnail';
 
 type InferenceState = 'loading_model' | 'running' | 'done' | 'error' | 'no_model';
 
@@ -156,6 +158,26 @@ ${basePrompt}`
 
       setResult(parsed);
       setInferenceState('done');
+
+      // Persist to SQLite history (thumbnail saved, original deleted)
+      try {
+        const thumb = imageUri ? await makeThumbnail(imageUri) : null;
+        if (imageUri) await deleteOriginal(imageUri);
+        await saveCase({
+          worker_type:          workerType ?? 'general',
+          condition_name:       parsed.conditionName,
+          confidence:           parsed.confidence,
+          severity:             parsed.severity,
+          otc_suggestion:       parsed.otcSuggestion ?? null,
+          doctor_referral:      parsed.doctorReferral,
+          needs_urgent_referral: parsed.needsUrgentReferral,
+          thumbnail_base64:     thumb,
+          raw_symptoms:         symptoms ?? null,
+          language_used:        language ?? 'en',
+        });
+      } catch (e) {
+        console.warn('[History] Failed to save case:', e);
+      }
     } catch (e: any) {
       console.error('[Result] Inference error:', e);
       setInferenceState('error');
