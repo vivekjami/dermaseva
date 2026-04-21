@@ -152,15 +152,84 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
   // The mock simulates a 2-second inference delay and returns valid JSON.
   await new Promise((r) => setTimeout(r, 2000));
 
-  const mockRaw = JSON.stringify({
-    conditionName: 'Tinea corporis (Ringworm)',
-    confidence: 0.82,
-    severity: 'mild',
-    keySigns: ['circular red rash', 'raised scaly border', 'central clearing'],
-    otcSuggestion: 'Apply Clotrimazole 1% cream twice daily for 2–4 weeks. Keep area clean and dry.',
-    doctorReferral: 'If no improvement in 2 weeks or rash spreads, visit the nearest PHC.',
-    needsUrgentReferral: false,
-  });
+  // Symptom-driven mock — maps keywords in the prompt to realistic responses.
+  // Replace this entire block with the real LiteRT interpreter call in production.
+  const promptLower = input.prompt.toLowerCase();
+
+  let mockRaw: string;
+
+  if (promptLower.includes('scabies') || promptLower.includes('itching') || promptLower.includes('burrow') || promptLower.includes('mite')) {
+    mockRaw = JSON.stringify({
+      conditionName: 'Scabies',
+      confidence: 0.79,
+      severity: 'mild',
+      keySigns: ['intense nocturnal itching', 'linear burrow tracks', 'papules between fingers and wrists'],
+      otcSuggestion: 'Apply Permethrin 5% cream to entire body from neck down overnight. Treat all household contacts simultaneously. Wash clothing and bedding at 60°C.',
+      doctorReferral: 'If itching persists after treatment or spreads to new household members, visit PHC.',
+      needsUrgentReferral: false,
+    });
+  } else if (promptLower.includes('fungal') || promptLower.includes('ring') || promptLower.includes('tinea') || promptLower.includes('circular')) {
+    mockRaw = JSON.stringify({
+      conditionName: 'Tinea corporis (Ringworm)',
+      confidence: 0.84,
+      severity: 'mild',
+      keySigns: ['circular red rash with central clearing', 'raised scaly border', 'spreads outward'],
+      otcSuggestion: 'Apply Clotrimazole 1% cream twice daily for 2–4 weeks. Keep area clean and dry.',
+      doctorReferral: 'If no improvement after 2 weeks or rash spreads significantly, visit the nearest PHC.',
+      needsUrgentReferral: false,
+    });
+  } else if (promptLower.includes('eczema') || promptLower.includes('dry') || promptLower.includes('atopic')) {
+    mockRaw = JSON.stringify({
+      conditionName: 'Mild Atopic Dermatitis (Eczema)',
+      confidence: 0.71,
+      severity: 'mild',
+      keySigns: ['dry itchy skin patches', 'skin inflammation', 'scratching marks'],
+      otcSuggestion: 'Apply fragrance-free moisturizing cream twice daily. Avoid harsh soaps and detergents.',
+      doctorReferral: 'If eczema worsens, covers large areas, or shows signs of infection (pus, fever), visit PHC.',
+      needsUrgentReferral: false,
+    });
+  } else if (promptLower.includes('leprosy') || promptLower.includes('numb') || promptLower.includes('sensation')) {
+    mockRaw = JSON.stringify({
+      conditionName: 'Suspected Leprosy — Refer Immediately',
+      confidence: 0.65,
+      severity: 'severe',
+      keySigns: ['hypopigmented patches', 'loss of skin sensation', 'possible nerve thickening'],
+      otcSuggestion: null,
+      doctorReferral: 'Refer to PHC immediately for NLEP evaluation. Do NOT attempt any OTC treatment. Leprosy requires multidrug therapy (MDT) under medical supervision.',
+      needsUrgentReferral: true,
+    });
+  } else if (promptLower.includes('heat') || promptLower.includes('prickly') || promptLower.includes('miliaria') || promptLower.includes('sweat')) {
+    mockRaw = JSON.stringify({
+      conditionName: 'Miliaria (Heat Rash)',
+      confidence: 0.88,
+      severity: 'mild',
+      keySigns: ['small red bumps under clothing areas', 'worse in hot humid weather', 'no burrow tracks'],
+      otcSuggestion: 'Keep affected area clean and dry. Use talc-free powder. Wear loose cotton clothing.',
+      doctorReferral: 'If rash does not clear within a week or develops blisters, visit PHC.',
+      needsUrgentReferral: false,
+    });
+  } else if (promptLower.includes('contact') || promptLower.includes('dermatitis') || promptLower.includes('irritant') || promptLower.includes('soap')) {
+    mockRaw = JSON.stringify({
+      conditionName: 'Contact Dermatitis (Mild)',
+      confidence: 0.76,
+      severity: 'mild',
+      keySigns: ['localized redness at contact site', 'itching and skin irritation', 'no spreading beyond contact area'],
+      otcSuggestion: 'Apply Calamine lotion for symptom relief. Identify and avoid the irritant (soap, plant, detergent).',
+      doctorReferral: 'If blistering develops or rash spreads beyond contact site, visit PHC within 24 hours.',
+      needsUrgentReferral: false,
+    });
+  } else {
+    // Default: unknown condition, low confidence, escalate
+    mockRaw = JSON.stringify({
+      conditionName: 'Unidentified Skin Condition',
+      confidence: 0.42,
+      severity: 'moderate',
+      keySigns: ['abnormal skin appearance', 'requires clinical examination'],
+      otcSuggestion: null,
+      doctorReferral: 'This condition could not be identified with confidence. Please visit the nearest PHC for a proper examination.',
+      needsUrgentReferral: false,
+    });
+  }
   // ─────────────────────────────────────────────────────────────────────────
 
   return {
