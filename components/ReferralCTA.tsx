@@ -12,13 +12,26 @@ interface Props {
 export function ReferralCTA({ decision, doctorReferralText }: Props) {
 
   function handlePress() {
-    // In production, deep-link to the NHM PHC locator or Google Maps search.
-    // For now, open a Google Maps search for nearest government hospital.
-    const query = encodeURIComponent('nearest government hospital PHC');
-    const url = `https://www.google.com/maps/search/${query}`;
-    Linking.openURL(url).catch(() =>
-      Alert.alert('Could not open Maps', 'Please search for your nearest PHC manually.')
-    );
+    // geo: URI works on Android (opens Google Maps or any maps app)
+    // Falls back to browser maps search if no maps app is installed
+    const geoUri = 'geo:0,0?q=Primary+Health+Centre+near+me';
+    const browserFallback = 'https://maps.google.com/?q=Primary+Health+Centre+near+me';
+
+    Linking.canOpenURL(geoUri)
+      .then((supported) => {
+        const url = supported ? geoUri : browserFallback;
+        return Linking.openURL(url);
+      })
+      .catch(() => {
+        // Last resort: open browser maps
+        Linking.openURL(browserFallback).catch(() =>
+          Alert.alert(
+            'Open Maps',
+            'Search for "Primary Health Centre near me" in Google Maps.',
+            [{ text: 'OK' }]
+          )
+        );
+      });
   }
 
   return (

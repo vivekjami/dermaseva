@@ -19,6 +19,7 @@ import { checkOtcEligibility } from '@/modules/safety/otc-rules';
 import { getReferralDecision } from '@/modules/safety/referral-logic';
 import { ReferralCTA } from '@/components/ReferralCTA';
 import { SafetyBanner } from '@/components/SafetyBanner';
+import { OtcCard } from '@/components/OtcCard';
 
 type InferenceState = 'loading_model' | 'running' | 'done' | 'error' | 'no_model';
 
@@ -48,6 +49,7 @@ export default function ResultScreen() {
   const [inferenceMs, setInferenceMs] = useState(0);
   const [ragNote, setRagNote] = useState<string>('');
   const [otcOverridden, setOtcOverridden] = useState(false);
+  const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
 
   useEffect(() => {
     if (!imageUri) {
@@ -144,7 +146,9 @@ ${basePrompt}`
           workerType ?? 'general',
           validation.conditionFoundInGuidelines
         );
-        if (!otcCheck.eligible) {
+        if (otcCheck.eligible && otcCheck.rule) {
+          setOtcRule(otcCheck.rule);
+        } else {
           parsed = { ...parsed, otcSuggestion: null };
           setOtcOverridden(true);
         }
@@ -289,6 +293,11 @@ ${basePrompt}`
             <Text style={styles.ragNoteText}>📋 {ragNote}</Text>
           </View>
         ) : null}
+
+        {/* OTC remedy card — only for ASHA/Anganwadi, mild, guideline-confirmed */}
+        {otcRule && !otcOverridden && (
+          <OtcCard rule={otcRule} conditionName={result.conditionName} />
+        )}
 
         {/* OTC suppressed notice */}
         {otcOverridden && (
