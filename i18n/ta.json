@@ -14,5 +14,11 @@
   "result.severity.moderate": "மிதமான — விரைவில் மருத்துவரை அணுகவும்",
   "result.severity.severe": "கடுமையான — உடனே பரிந்துரைக்கவும்",
   "history.title": "வழக்கு வரலாறு",
-  "history.empty": "இன்னும் எந்த வழக்கும் பதிவு செய்யப்படவில்லை"
+  "history.empty": "இன்னும் எந்த வழக்கும் பதிவு செய்யப்படவில்லை",
+  "history": {
+    "title": "Case History",
+    "empty": "No cases recorded yet",
+    "deleted": "Case deleted",
+    "cleared": "All cases cleared"
+  }
 }
