@@ -12,6 +12,9 @@ import { loadModel, runInference, isModelDownloaded } from '@/modules/ai/litert'
 import { buildPrompt } from '@/modules/ai/prompt-builder';
 import { parseModelOutput, type ParsedResult } from '@/modules/ai/output-parser';
 import { useAppStore } from '@/store/app-store';
+import { isIndexUpToDate, buildIndex } from '@/modules/rag/indexer';
+import { retrieveRelevantChunks, buildRagContext } from '@/modules/rag/retriever';
+import { validateAgainstRag } from '@/modules/rag/validator';
 
 type InferenceState = 'loading_model' | 'running' | 'done' | 'error' | 'no_model';
 
@@ -39,6 +42,7 @@ export default function ResultScreen() {
   const [inferenceState, setInferenceState] = useState<InferenceState>('loading_model');
   const [result, setResult] = useState<ParsedResult | null>(null);
   const [inferenceMs, setInferenceMs] = useState(0);
+  const [ragNote, setRagNote] = useState<string>('');
 
   useEffect(() => {
     if (!imageUri) {
@@ -65,7 +69,18 @@ export default function ResultScreen() {
         }
       }
 
-      // 2. Load model into memory
+      // 2. Ensure RAG index is built (runs once at first launch, ~1s)
+      const indexed = await isIndexUpToDate();
+      if (!indexed) {
+        await buildIndex((msg) => console.log('[RAG]', msg));
+      }
+
+      // 3. Retrieve relevant guideline chunks for the symptom query
+      const symptomQuery = symptoms ?? 'skin rash itching';
+      const ragChunks = await retrieveRelevantChunks(symptomQuery);
+      const ragContext = buildRagContext(ragChunks);
+
+      // 4. Load model into memory
       setInferenceState('loading_model');
       const loaded = await loadModel();
       if (!loaded) {
@@ -73,20 +88,49 @@ export default function ResultScreen() {
         return;
       }
 
-      // 3. Build prompt
+      // 5. Build RAG-augmented prompt
       setInferenceState('running');
-      const prompt = buildPrompt({
+      const basePrompt = buildPrompt({
         symptomDescription: symptoms ?? 'No symptom description provided.',
         workerType: workerType ?? 'general',
         languageCode: language ?? 'en',
       });
+      // Prepend RAG context to ground the model in guidelines
+      const augmentedPrompt = ragContext
+        ? `${ragContext}
 
-      // 4. Run inference
-      const output = await runInference({ imagePath: imageUri, prompt });
+---
+
+${basePrompt}`
+        : basePrompt;
+
+      // 6. Run inference
+      const output = await runInference({ imagePath: imageUri, prompt: augmentedPrompt });
       setInferenceMs(output.inferenceTimeMs);
 
-      // 5. Parse & validate output
-      const parsed = parseModelOutput(output.rawText);
+      // 7. Parse & validate AI output
+      let parsed = parseModelOutput(output.rawText);
+
+      // 8. RAG validation — cross-check AI output against retrieved guidelines
+      const validation = validateAgainstRag(parsed, ragChunks);
+      setRagNote(validation.validationNote);
+
+      // Apply RAG confidence adjustment
+      const adjustedConfidence = Math.max(
+        0,
+        Math.min(1, parsed.confidence + validation.ragConfidenceBoost)
+      );
+
+      // Force urgent referral if RAG says condition is outside guidelines
+      parsed = {
+        ...parsed,
+        confidence: adjustedConfidence,
+        isLowConfidence: adjustedConfidence < 0.55,
+        needsUrgentReferral: parsed.needsUrgentReferral || validation.forceUrgentReferral,
+        // Suppress OTC if RAG validation flagged it
+        otcSuggestion: validation.forceUrgentReferral ? null : parsed.otcSuggestion,
+      };
+
       setResult(parsed);
       setInferenceState('done');
     } catch (e: any) {
@@ -224,6 +268,13 @@ export default function ResultScreen() {
           )}
         </View>
 
+        {/* RAG validation note */}
+        {ragNote ? (
+          <View style={styles.ragNote}>
+            <Text style={styles.ragNoteText}>📋 {ragNote}</Text>
+          </View>
+        ) : null}
+
         {/* Safety disclaimer — ALWAYS shown */}
         <View style={styles.disclaimer}>
           <Text style={styles.disclaimerText}>
@@ -317,5 +368,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#01696f', paddingVertical: 14, paddingHorizontal: 40, borderRadius: 12,
   },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  ragNote: {
+    backgroundColor: '#cedcd8', borderRadius: 10, padding: 12, marginBottom: 8,
+  },
+  ragNoteText: { color: '#01696f', fontSize: 13, lineHeight: 18 },
   debugText: { fontSize: 11, color: '#bab9b4', textAlign: 'center', marginTop: 8 },
 });
