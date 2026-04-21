@@ -1,55 +1,321 @@
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import {
+  View, Text, StyleSheet, Image, TouchableOpacity,
+  ScrollView, ActivityIndicator, Alert,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useEffect } from 'react';
+
+import { loadModel, runInference, isModelDownloaded } from '@/modules/ai/litert';
+import { buildPrompt } from '@/modules/ai/prompt-builder';
+import { parseModelOutput, type ParsedResult } from '@/modules/ai/output-parser';
+import { useAppStore } from '@/store/app-store';
+
+type InferenceState = 'loading_model' | 'running' | 'done' | 'error' | 'no_model';
+
+const SEVERITY_COLORS = {
+  mild: '#437a22',
+  moderate: '#da7101',
+  severe: '#a12c7b',
+};
+
+const SEVERITY_BG = {
+  mild: '#d4dfcc',
+  moderate: '#e7d7c4',
+  severe: '#e0ced7',
+};
 
 export default function ResultScreen() {
-  const { imageUri } = useLocalSearchParams<{ imageUri: string }>();
+  const { imageUri, symptoms } = useLocalSearchParams<{
+    imageUri: string;
+    symptoms?: string;
+  }>();
   const router = useRouter();
+  const { t } = useTranslation();
+  const { workerType, language } = useAppStore();
 
-  // Log file size to confirm preprocessing worked
+  const [inferenceState, setInferenceState] = useState<InferenceState>('loading_model');
+  const [result, setResult] = useState<ParsedResult | null>(null);
+  const [inferenceMs, setInferenceMs] = useState(0);
+
   useEffect(() => {
-    if (imageUri) {
-      FileSystem.getInfoAsync(imageUri).then((info) => {
-        if (info.exists) {
-          const sizeKB = Math.round((info as any).size / 1024);
-          console.log(`Captured image: ${sizeKB}KB at ${imageUri}`);
-        }
-      });
+    if (!imageUri) {
+      setInferenceState('error');
+      return;
     }
-  }, [imageUri]);
+    runAnalysis();
+
+    // Cleanup: delete temp image after done (regardless of result)
+    return () => {
+      FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
+    };
+  }, []);
+
+  async function runAnalysis() {
+    try {
+      // 1. Check model is present (skip in dev mock mode)
+      const DEV_MOCK_MODE = true;
+      if (!DEV_MOCK_MODE) {
+        const downloaded = await isModelDownloaded();
+        if (!downloaded) {
+          setInferenceState('no_model');
+          return;
+        }
+      }
+
+      // 2. Load model into memory
+      setInferenceState('loading_model');
+      const loaded = await loadModel();
+      if (!loaded) {
+        setInferenceState('no_model');
+        return;
+      }
+
+      // 3. Build prompt
+      setInferenceState('running');
+      const prompt = buildPrompt({
+        symptomDescription: symptoms ?? 'No symptom description provided.',
+        workerType: workerType ?? 'general',
+        languageCode: language ?? 'en',
+      });
+
+      // 4. Run inference
+      const output = await runInference({ imagePath: imageUri, prompt });
+      setInferenceMs(output.inferenceTimeMs);
+
+      // 5. Parse & validate output
+      const parsed = parseModelOutput(output.rawText);
+      setResult(parsed);
+      setInferenceState('done');
+    } catch (e: any) {
+      console.error('[Result] Inference error:', e);
+      setInferenceState('error');
+    }
+  }
+
+  // ── Loading states ─────────────────────────────────────────────────────────
+  if (inferenceState === 'loading_model' || inferenceState === 'running') {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <ActivityIndicator size="large" color="#01696f" />
+        <Text style={styles.loadingText}>
+          {inferenceState === 'loading_model' ? 'Loading AI model…' : 'Analyzing skin condition…'}
+        </Text>
+        <Text style={styles.loadingSubtext}>
+          {inferenceState === 'running' ? 'This may take 10–30 seconds on first run' : ''}
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (inferenceState === 'no_model') {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <Text style={styles.errorIcon}>⬇️</Text>
+        <Text style={styles.errorTitle}>AI Model Not Downloaded</Text>
+        <Text style={styles.errorBody}>
+          The Gemma 4 model needs to be downloaded once before use. Connect to Wi-Fi and relaunch.
+        </Text>
+        <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
+          <Text style={styles.btnText}>← Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (inferenceState === 'error' || !result) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <Text style={styles.errorIcon}>⚠️</Text>
+        <Text style={styles.errorTitle}>Analysis Failed</Text>
+        <Text style={styles.errorBody}>
+          Something went wrong. Please retake the photo in better lighting.
+        </Text>
+        <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
+          <Text style={styles.btnText}>← Retake Photo</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Result screen ──────────────────────────────────────────────────────────
+  const severityColor = SEVERITY_COLORS[result.severity];
+  const severityBg = SEVERITY_BG[result.severity];
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.heading}>📸 Image captured</Text>
-      <Text style={styles.sub}>Phase 4 will run AI inference here</Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-      {imageUri ? (
-        <Image
-          source={{ uri: imageUri }}
-          style={styles.preview}
-          resizeMode="cover"
-        />
-      ) : null}
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.backBtn}>← Retake</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Screening Result</Text>
+          <View style={{ width: 60 }} />
+        </View>
 
-      <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
-        <Text style={styles.btnText}>← Retake</Text>
-      </TouchableOpacity>
+        {/* Low confidence warning */}
+        {result.isLowConfidence && (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningText}>
+              ⚠️ The AI could not identify this condition with confidence. Take photo in better lighting and retake.
+            </Text>
+          </View>
+        )}
+
+        {/* Condition card */}
+        <View style={styles.card}>
+          <View style={[styles.severityBadge, { backgroundColor: severityBg }]}>
+            <Text style={[styles.severityText, { color: severityColor }]}>
+              {result.severity.toUpperCase()}
+            </Text>
+          </View>
+
+          <Text style={styles.conditionName}>{result.conditionName}</Text>
+
+          <View style={styles.confidenceRow}>
+            <Text style={styles.confidenceLabel}>{t('result.confidence')}</Text>
+            <View style={styles.confidenceBarBg}>
+              <View
+                style={[
+                  styles.confidenceBarFill,
+                  {
+                    width: `${Math.round(result.confidence * 100)}%` as any,
+                    backgroundColor: severityColor,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.confidenceValue}>
+              {Math.round(result.confidence * 100)}%
+            </Text>
+          </View>
+        </View>
+
+        {/* Key signs */}
+        {result.keySigns.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Key Signs Observed</Text>
+            {result.keySigns.map((sign, i) => (
+              <Text key={i} style={styles.bullet}>• {sign}</Text>
+            ))}
+          </View>
+        )}
+
+        {/* OTC suggestion */}
+        {result.otcSuggestion && !result.isLowConfidence && (
+          <View style={[styles.card, styles.otcCard]}>
+            <Text style={styles.sectionLabel}>{t('result.otcSuggestion')}</Text>
+            <Text style={styles.otcText}>{result.otcSuggestion}</Text>
+          </View>
+        )}
+
+        {/* Doctor referral — ALWAYS shown */}
+        <View style={[styles.card, styles.referralCard]}>
+          <Text style={styles.referralLabel}>👨‍⚕️ {t('result.seeDoctor')}</Text>
+          <Text style={styles.referralText}>{result.doctorReferral}</Text>
+          {result.needsUrgentReferral && (
+            <View style={styles.urgentBadge}>
+              <Text style={styles.urgentText}>⚠️ REFER IMMEDIATELY</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Safety disclaimer — ALWAYS shown */}
+        <View style={styles.disclaimer}>
+          <Text style={styles.disclaimerText}>
+            ℹ️ {t('result.disclaimer')}
+          </Text>
+        </View>
+
+        {/* Debug info (remove in production) */}
+        <Text style={styles.debugText}>
+          Inference: {inferenceMs}ms
+        </Text>
+
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f6f2', padding: 24 },
-  heading: { fontSize: 24, fontWeight: '700', color: '#28251d', marginBottom: 8 },
-  sub: { fontSize: 16, color: '#7a7974', marginBottom: 24 },
-  preview: { width: '100%', height: 320, borderRadius: 12, marginBottom: 24 },
+  container: { flex: 1, backgroundColor: '#f7f6f2' },
+  scroll: { padding: 16, paddingBottom: 48 },
+  centered: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#f7f6f2', padding: 32,
+  },
+  // Header
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 16,
+  },
+  backBtn: { color: '#01696f', fontSize: 16, fontWeight: '600' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#28251d' },
+  // Cards
+  card: {
+    backgroundColor: '#fff', borderRadius: 12, padding: 16,
+    marginBottom: 12,
+    shadowColor: '#28251d', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  severityBadge: {
+    alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 99, marginBottom: 10,
+  },
+  severityText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  conditionName: {
+    fontSize: 22, fontWeight: '700', color: '#28251d', marginBottom: 12,
+  },
+  confidenceRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  confidenceLabel: { fontSize: 13, color: '#7a7974', width: 72 },
+  confidenceBarBg: {
+    flex: 1, height: 6, backgroundColor: '#e6e4df', borderRadius: 99, overflow: 'hidden',
+  },
+  confidenceBarFill: { height: '100%', borderRadius: 99 },
+  confidenceValue: { fontSize: 13, fontWeight: '600', color: '#28251d', width: 36, textAlign: 'right' },
+  // Key signs
+  sectionLabel: {
+    fontSize: 13, fontWeight: '600', color: '#7a7974',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
+  },
+  bullet: { fontSize: 15, color: '#28251d', marginBottom: 4, lineHeight: 22 },
+  // OTC
+  otcCard: { borderLeftWidth: 3, borderLeftColor: '#437a22' },
+  otcText: { fontSize: 15, color: '#28251d', lineHeight: 22 },
+  // Referral
+  referralCard: { borderLeftWidth: 3, borderLeftColor: '#01696f' },
+  referralLabel: { fontSize: 16, fontWeight: '700', color: '#28251d', marginBottom: 8 },
+  referralText: { fontSize: 15, color: '#28251d', lineHeight: 22 },
+  urgentBadge: {
+    marginTop: 12, backgroundColor: '#e0ced7',
+    borderRadius: 8, padding: 10, alignItems: 'center',
+  },
+  urgentText: { color: '#a12c7b', fontWeight: '700', fontSize: 14 },
+  // Warning banner
+  warningBanner: {
+    backgroundColor: '#ddcfc6', borderRadius: 10, padding: 12, marginBottom: 12,
+  },
+  warningText: { color: '#964219', fontSize: 14, lineHeight: 20 },
+  // Disclaimer
+  disclaimer: {
+    backgroundColor: '#f3f0ec', borderRadius: 10, padding: 12, marginBottom: 8,
+  },
+  disclaimerText: { color: '#7a7974', fontSize: 13, lineHeight: 18 },
+  // Loading / Error
+  loadingText: {
+    fontSize: 18, fontWeight: '600', color: '#28251d', marginTop: 16, textAlign: 'center',
+  },
+  loadingSubtext: { fontSize: 14, color: '#7a7974', marginTop: 6, textAlign: 'center' },
+  errorIcon: { fontSize: 56, marginBottom: 16 },
+  errorTitle: { fontSize: 22, fontWeight: '700', color: '#28251d', marginBottom: 8, textAlign: 'center' },
+  errorBody: { fontSize: 15, color: '#7a7974', textAlign: 'center', lineHeight: 22, marginBottom: 24 },
   btn: {
-    backgroundColor: '#01696f',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
+    backgroundColor: '#01696f', paddingVertical: 14, paddingHorizontal: 40, borderRadius: 12,
   },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  debugText: { fontSize: 11, color: '#bab9b4', textAlign: 'center', marginTop: 8 },
 });
