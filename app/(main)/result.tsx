@@ -15,6 +15,11 @@ import { useAppStore } from '@/store/app-store';
 import { isIndexUpToDate, buildIndex } from '@/modules/rag/indexer';
 import { retrieveRelevantChunks, buildRagContext } from '@/modules/rag/retriever';
 import { validateAgainstRag } from '@/modules/rag/validator';
+import { checkOtcEligibility } from '@/modules/safety/otc-rules';
+import { getReferralDecision } from '@/modules/safety/referral-logic';
+import { ReferralCTA } from '@/components/ReferralCTA';
+import { SafetyBanner } from '@/components/SafetyBanner';
+import { OtcCard } from '@/components/OtcCard';
 
 type InferenceState = 'loading_model' | 'running' | 'done' | 'error' | 'no_model';
 
@@ -43,6 +48,8 @@ export default function ResultScreen() {
   const [result, setResult] = useState<ParsedResult | null>(null);
   const [inferenceMs, setInferenceMs] = useState(0);
   const [ragNote, setRagNote] = useState<string>('');
+  const [otcOverridden, setOtcOverridden] = useState(false);
+  const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
 
   useEffect(() => {
     if (!imageUri) {
@@ -131,6 +138,22 @@ ${basePrompt}`
         otcSuggestion: validation.forceUrgentReferral ? null : parsed.otcSuggestion,
       };
 
+      // OTC safety gate — enforce all 4 rules from build spec
+      if (parsed.otcSuggestion) {
+        const otcCheck = checkOtcEligibility(
+          parsed.conditionName,
+          parsed.severity,
+          workerType ?? 'general',
+          validation.conditionFoundInGuidelines
+        );
+        if (otcCheck.eligible && otcCheck.rule) {
+          setOtcRule(otcCheck.rule);
+        } else {
+          parsed = { ...parsed, otcSuggestion: null };
+          setOtcOverridden(true);
+        }
+      }
+
       setResult(parsed);
       setInferenceState('done');
     } catch (e: any) {
@@ -201,13 +224,10 @@ ${basePrompt}`
           <View style={{ width: 60 }} />
         </View>
 
-        {/* Low confidence warning */}
-        {result.isLowConfidence && (
-          <View style={styles.warningBanner}>
-            <Text style={styles.warningText}>
-              ⚠️ The AI could not identify this condition with confidence. Take photo in better lighting and retake.
-            </Text>
-          </View>
+        {/* Safety banners */}
+        {result.isLowConfidence && <SafetyBanner type="low_confidence" />}
+        {result.severity === 'severe' && !result.isLowConfidence && (
+          <SafetyBanner type="severe" />
         )}
 
         {/* Condition card */}
@@ -257,16 +277,15 @@ ${basePrompt}`
           </View>
         )}
 
-        {/* Doctor referral — ALWAYS shown */}
-        <View style={[styles.card, styles.referralCard]}>
-          <Text style={styles.referralLabel}>👨‍⚕️ {t('result.seeDoctor')}</Text>
-          <Text style={styles.referralText}>{result.doctorReferral}</Text>
-          {result.needsUrgentReferral && (
-            <View style={styles.urgentBadge}>
-              <Text style={styles.urgentText}>⚠️ REFER IMMEDIATELY</Text>
-            </View>
+        {/* ReferralCTA — ALWAYS shown, cannot be hidden */}
+        <ReferralCTA
+          decision={getReferralDecision(
+            result.severity,
+            result.isLowConfidence,
+            result.needsUrgentReferral
           )}
-        </View>
+          doctorReferralText={result.doctorReferral}
+        />
 
         {/* RAG validation note */}
         {ragNote ? (
@@ -274,6 +293,20 @@ ${basePrompt}`
             <Text style={styles.ragNoteText}>📋 {ragNote}</Text>
           </View>
         ) : null}
+
+        {/* OTC remedy card — only for ASHA/Anganwadi, mild, guideline-confirmed */}
+        {otcRule && !otcOverridden && (
+          <OtcCard rule={otcRule} conditionName={result.conditionName} />
+        )}
+
+        {/* OTC suppressed notice */}
+        {otcOverridden && (
+          <View style={styles.otcSuppressed}>
+            <Text style={styles.otcSuppressedText}>
+              ℹ️ OTC suggestion not shown — consult a doctor for proper treatment.
+            </Text>
+          </View>
+        )}
 
         {/* Safety disclaimer — ALWAYS shown */}
         <View style={styles.disclaimer}>
@@ -338,19 +371,7 @@ const styles = StyleSheet.create({
   otcCard: { borderLeftWidth: 3, borderLeftColor: '#437a22' },
   otcText: { fontSize: 15, color: '#28251d', lineHeight: 22 },
   // Referral
-  referralCard: { borderLeftWidth: 3, borderLeftColor: '#01696f' },
-  referralLabel: { fontSize: 16, fontWeight: '700', color: '#28251d', marginBottom: 8 },
-  referralText: { fontSize: 15, color: '#28251d', lineHeight: 22 },
-  urgentBadge: {
-    marginTop: 12, backgroundColor: '#e0ced7',
-    borderRadius: 8, padding: 10, alignItems: 'center',
-  },
-  urgentText: { color: '#a12c7b', fontWeight: '700', fontSize: 14 },
   // Warning banner
-  warningBanner: {
-    backgroundColor: '#ddcfc6', borderRadius: 10, padding: 12, marginBottom: 12,
-  },
-  warningText: { color: '#964219', fontSize: 14, lineHeight: 20 },
   // Disclaimer
   disclaimer: {
     backgroundColor: '#f3f0ec', borderRadius: 10, padding: 12, marginBottom: 8,
@@ -372,5 +393,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#cedcd8', borderRadius: 10, padding: 12, marginBottom: 8,
   },
   ragNoteText: { color: '#01696f', fontSize: 13, lineHeight: 18 },
+  otcSuppressed: {
+    backgroundColor: '#f3f0ec', borderRadius: 10, padding: 12, marginBottom: 8,
+  },
+  otcSuppressedText: { color: '#7a7974', fontSize: 13, lineHeight: 18 },
   debugText: { fontSize: 11, color: '#bab9b4', textAlign: 'center', marginTop: 8 },
 });
