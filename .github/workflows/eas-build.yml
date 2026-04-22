@@ -1,30 +1,32 @@
-# EAS Build is disabled until Expo account + secrets are configured.
-# Re-enable this in Phase 9 after setting EXPO_TOKEN and GOOGLE_SERVICE_ACCOUNT_KEY.
-# See: https://docs.expo.dev/accounts/programmatic-access/
-
-name: EAS Build on main
+name: EAS Build
 
 on:
-  workflow_dispatch  # manual trigger only for now
+  push:
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
+
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
+
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-      - name: Build Android (AAB)
+
+      - name: Build Android AAB
         run: eas build --platform android --profile production --non-interactive
+
       - name: Submit to Play Store internal track
         run: eas submit --platform android --latest --non-interactive
         env:

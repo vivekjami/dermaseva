@@ -15,7 +15,7 @@ export interface VerificationResult {
 }
 
 export async function verifyModelIntegrity(): Promise<VerificationResult> {
-  const info = await FileSystem.getInfoAsync(MODEL_PATH) as any;
+  const info = await FileSystem.getInfoAsync(MODEL_PATH) as { exists: boolean; size?: number };
   if (!info.exists) {
     return { valid: false, reason: 'Model file not found.' };
   }
@@ -35,7 +35,7 @@ export async function verifyModelIntegrity(): Promise<VerificationResult> {
   }
 
   try {
-    const digest = await (FileSystem as any).digestAsync(MODEL_PATH, {
+    const digest = await (FileSystem as unknown as { digestAsync: (path: string, opts: { algorithm: string }) => Promise<string> }).digestAsync(MODEL_PATH, {
       algorithm: 'SHA-256',
     });
     const hash: string = (digest ?? '').toLowerCase();
@@ -48,8 +48,8 @@ export async function verifyModelIntegrity(): Promise<VerificationResult> {
       };
     }
     return { valid: true, reason: 'Model integrity verified ✓' };
-  } catch (e: any) {
-    console.warn('[ModelVerifier] digestAsync unavailable, size-only check:', e.message);
+  } catch (e: unknown) {
+    console.warn('[ModelVerifier] digestAsync unavailable, size-only check:', (e as Error).message);
     return { valid: true, reason: 'Size check passed (digest unavailable).' };
   }
 }

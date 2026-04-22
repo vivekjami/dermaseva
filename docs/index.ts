@@ -1,4 +1,7 @@
-// Centralized asset loader — require() paths are relative to THIS file (project root/docs/)
-// Metro resolves these correctly because this file sits next to the docs folder.
-export const NHM_ASHA_ASSET = require('./nhm-asha-guidelines.txt');
-export const WHO_SKIN_ASSET  = require('./who-skin-guidelines.txt');
+// Metro asset module IDs — passed to Asset.fromModule() in indexer.ts
+// require() of a static asset returns a number (the Metro module ID)
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const NHM_ASHA_ASSET: number = require('./nhm-asha-guidelines.txt') as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const WHO_SKIN_ASSET: number = require('./who-skin-guidelines.txt') as number;
