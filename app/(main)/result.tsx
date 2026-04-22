@@ -64,7 +64,7 @@ export default function ResultScreen() {
     return () => {
       FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
     };
-  }, [imageUri, runAnalysis]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runAnalysis = useCallback(async () => {
     try {

@@ -1,9 +1,7 @@
-// RAG document registry — loaded at first launch for embedding indexing
+// Metro asset module IDs — passed to Asset.fromModule() in indexer.ts
+// require() of a static asset returns a number (the Metro module ID)
 
-import nhmGuidelines from './nhm-asha-guidelines.txt';
-import whoGuidelines from './who-skin-guidelines.txt';
-
-export const RAG_DOCUMENTS = [
-  { name: 'NHM ASHA Guidelines',   content: nhmGuidelines },
-  { name: 'WHO Skin Disease Guide', content: whoGuidelines },
-];
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const NHM_ASHA_ASSET: number = require('./nhm-asha-guidelines.txt') as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const WHO_SKIN_ASSET: number = require('./who-skin-guidelines.txt') as number;
