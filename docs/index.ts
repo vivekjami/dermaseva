@@ -1,4 +1,9 @@
-// Centralized asset loader — require() paths are relative to THIS file (project root/docs/)
-// Metro resolves these correctly because this file sits next to the docs folder.
-export const NHM_ASHA_ASSET = require('./nhm-asha-guidelines.txt');
-export const WHO_SKIN_ASSET  = require('./who-skin-guidelines.txt');
+// RAG document registry — loaded at first launch for embedding indexing
+
+import nhmGuidelines from './nhm-asha-guidelines.txt';
+import whoGuidelines from './who-skin-guidelines.txt';
+
+export const RAG_DOCUMENTS = [
+  { name: 'NHM ASHA Guidelines',   content: nhmGuidelines },
+  { name: 'WHO Skin Disease Guide', content: whoGuidelines },
+];

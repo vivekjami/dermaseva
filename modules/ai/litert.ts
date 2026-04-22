@@ -40,8 +40,8 @@ export async function copyModelFromAdb(): Promise<boolean> {
     await FileSystem.copyAsync({ from: `file://${MODEL_ADB_PATH}`, to: MODEL_DEST_PATH });
     console.warn('[LiteRT] Model copy complete ✓');
     return true;
-  } catch (e: any) {
-    console.error('[LiteRT] copyModelFromAdb failed:', e.message);
+  } catch (e: unknown) {
+    console.error('[LiteRT] copyModelFromAdb failed:', (e as Error).message);
     return false;
   }
 }
@@ -74,8 +74,8 @@ export async function loadModel(): Promise<boolean> {
     engineReady = true;
     console.warn('[LiteRT] Gemma 4 E4B ready ✓');
     return true;
-  } catch (e: any) {
-    console.error('[LiteRT] loadModel failed:', e.message);
+  } catch (e: unknown) {
+    console.error('[LiteRT] loadModel failed:', (e as Error).message);
     engineReady = false;
     llm = null;
     return false;
@@ -100,8 +100,8 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
   try {
     const response = await llm.sendMessage(input.prompt);
     return { rawText: response, inferenceTimeMs: Date.now() - start };
-  } catch (e: any) {
-    console.error('[LiteRT] Inference error:', e.message);
+  } catch (e: unknown) {
+    console.error('[LiteRT] Inference error:', (e as Error).message);
     return runMockInference(input);
   }
 }
@@ -109,7 +109,7 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 // ── Cleanup ───────────────────────────────────────────────────────────────────
 export async function unloadModel(): Promise<void> {
   if (llm) {
-    try { llm.close(); } catch (_) {}
+    try { llm.close(); } catch (_e) {}
     llm = null;
     engineReady = false;
   }
@@ -124,7 +124,7 @@ const MOCKS = [
     otc: 'Apply Permethrin 5% cream overnight. Treat all household contacts.' },
 ];
 
-function runMockInference(_input: InferenceInput): InferenceOutput {
+function runMockInference(_ignored: InferenceInput): InferenceOutput {
   const m = MOCKS[Math.floor(Math.random() * MOCKS.length)];
   const severity = m.severity as 'mild' | 'moderate' | 'severe';
   return {

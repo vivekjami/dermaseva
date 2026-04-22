@@ -49,7 +49,6 @@ export function validateAgainstRag(
   let otcAligned = true;
   if (parsed.otcSuggestion) {
     const otcLower = parsed.otcSuggestion.toLowerCase();
-    const guidelineText = chunks.map((c) => c.chunkText.toLowerCase()).join(' ');
     // If OTC suggestion contains a drug name not mentioned in guidelines, flag it
     const suspectDrugs = ['steroid', 'cortisone', 'antibiotic', 'amoxicillin', 'dexamethasone'];
     otcAligned = !suspectDrugs.some((drug) => otcLower.includes(drug));

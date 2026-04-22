@@ -92,9 +92,9 @@ async function readBundledAsset(module: number): Promise<string> {
       if (content.length > 500 && !content.trimStart().startsWith('<')) {
         return content;
       }
-      console.log('[RAG] localUri returned HTML/redirect, falling back to fetch');
+      console.warn('[RAG] localUri returned HTML/redirect, falling back to fetch');
     } catch (e) {
-      console.log('[RAG] localUri read failed, falling back to fetch:', e);
+      console.warn('[RAG] localUri read failed, falling back to fetch:', e);
     }
   }
 
@@ -103,7 +103,7 @@ async function readBundledAsset(module: number): Promise<string> {
     const res = await fetch(asset.uri);
     if (!res.ok) throw new Error(`Asset fetch failed: ${res.status} ${asset.uri}`);
     const text = await res.text();
-    console.log('[RAG] fetched via URI, length:', text.length);
+    console.warn('[RAG] fetched via URI, length:', text.length);
     return text;
   }
 

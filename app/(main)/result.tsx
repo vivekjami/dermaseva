@@ -1,10 +1,10 @@
 import {
-  View, Text, StyleSheet, Image, TouchableOpacity,
-  ScrollView, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -64,9 +64,9 @@ export default function ResultScreen() {
     return () => {
       FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
     };
-  }, []);
+  }, [imageUri, runAnalysis]);
 
-  async function runAnalysis() {
+  const runAnalysis = useCallback(async () => {
     try {
       // 1. Check model is present (skip in dev mock mode)
       const DEV_MOCK_MODE = true;
@@ -81,7 +81,7 @@ export default function ResultScreen() {
       // 2. Ensure RAG index is built (runs once at first launch, ~1s)
       const indexed = await isIndexUpToDate();
       if (!indexed) {
-        await buildIndex((msg) => console.log('[RAG]', msg));
+        await buildIndex((msg) => console.warn('[RAG]', msg));
       }
 
       // 3. Retrieve relevant guideline chunks for the symptom query
@@ -178,12 +178,11 @@ ${basePrompt}`
       } catch (e) {
         console.warn('[History] Failed to save case:', e);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('[Result] Inference error:', e);
       setInferenceState('error');
     }
-  }
-
+  }, [imageUri, symptoms, workerType, language]);
   // ── Loading states ─────────────────────────────────────────────────────────
   if (inferenceState === 'loading_model' || inferenceState === 'running') {
     return (
@@ -269,7 +268,7 @@ ${basePrompt}`
                 style={[
                   styles.confidenceBarFill,
                   {
-                    width: `${Math.round(result.confidence * 100)}%` as any,
+                    width: `${Math.round(result.confidence * 100)}%`,
                     backgroundColor: severityColor,
                   },
                 ]}
