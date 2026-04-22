@@ -26,10 +26,7 @@
       "permissions": [
         "android.permission.CAMERA"
       ],
-      "allowBackup": false,
-      "manifest": {
-        "android:networkSecurityConfig": "@xml/network_security_config"
-      }
+      "allowBackup": false
     },
     "web": {
       "bundler": "metro",
