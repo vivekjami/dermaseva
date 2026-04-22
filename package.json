@@ -25,7 +25,6 @@
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "i18next": "^26.0.6",
-    "jest-expo": "~54.0.17",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-i18next": "^17.0.4",
@@ -48,6 +47,8 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.5.0",
+    "jest": "^30.3.0",
+    "jest-expo": "^55.0.16",
     "typescript": "~5.9.2"
   },
   "private": true,
