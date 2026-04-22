@@ -24,7 +24,9 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "android.permission.CAMERA"
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "allowBackup": false
     },
@@ -46,6 +48,12 @@
     "assetBundlePatterns": [
       "docs/**/*",
       "assets/**/*"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f7cdb65b-4437-4cff-b90e-fb7a39bdfb1a"
+      }
+    }
   }
 }
