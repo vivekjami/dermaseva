@@ -1,22 +1,34 @@
 /**
- * litert.ts — Production on-device LLM inference via expo-llm-mediapipe
- * Uses Google MediaPipe LLM Inference API running Gemma 3 1B (1.2 GB)
+ * litert.ts — Production on-device LLM inference via react-native-litert-lm
+ * Uses Google LiteRT-LM runtime with Gemma 4 E2B (~2.58 GB)
  * Fully offline after first model download. No data leaves the device.
  */
 
-import ExpoLlmMediapipe from 'expo-llm-mediapipe';
-import type {
-  DownloadProgressEvent,
-  DownloadOptions,
-} from 'expo-llm-mediapipe';
+import { createLLM, applyGemmaTemplate, getRecommendedBackend } from 'react-native-litert-lm';
+import * as FileSystem from 'expo-file-system/legacy';
 import { verifyModelIntegrity } from '@/modules/security/model-verifier';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const MODEL_NAME = 'gemma3-1b-it-cpu-int4.task';
+export const MODEL_NAME = 'gemma-4-E2B-it.litertlm';
 export const MODEL_DOWNLOAD_URL =
-  'https://huggingface.co/t-ghosh/gemma-tflite/resolve/main/gemma3-1b-it-cpu-int4.task';
-export const MODEL_SIZE_BYTES = 1_200_000_000; // ~1.2 GB
+  'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm';
+export const MODEL_SIZE_BYTES = 2_580_000_000; // ~2.58 GB (Gemma 4 E2B LiteRT-LM)
+
+const MODEL_LOCAL_PATH = `${FileSystem.documentDirectory}${MODEL_NAME}`;
+
+const SYSTEM_PROMPT = `You are DermaSeva, a clinical decision support tool for ASHA workers in rural India.
+Analyze the described skin condition and respond ONLY with valid JSON in this exact schema:
+{
+  "conditionName": string,
+  "confidence": number (0.0–1.0),
+  "severity": "mild" | "moderate" | "severe",
+  "keySigns": string[],
+  "otcSuggestion": string | null,
+  "doctorReferral": string,
+  "needsUrgentReferral": boolean
+}
+Do not include any text outside the JSON object.`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,65 +51,41 @@ export interface DownloadProgress {
 // ─── Model file management ────────────────────────────────────────────────────
 
 export async function isModelDownloaded(): Promise<boolean> {
-  return ExpoLlmMediapipe.isModelDownloaded(MODEL_NAME);
+  const info = await FileSystem.getInfoAsync(MODEL_LOCAL_PATH);
+  return info.exists && (info.size ?? 0) > MODEL_SIZE_BYTES * 0.95;
 }
 
-/**
- * Downloads Gemma 3 1B via expo-llm-mediapipe's native downloader.
- * Handles resume, progress events, and SHA verification internally.
- */
 export async function downloadModel(
   onProgress: (progress: DownloadProgress) => void
 ): Promise<boolean> {
-  // Subscribe to native download progress events
-  const sub = ExpoLlmMediapipe.addListener(
-    'downloadProgress',
-    (event: DownloadProgressEvent) => {
-      if (event.modelName !== MODEL_NAME) return;
-      if (
-        event.bytesDownloaded !== undefined &&
-        event.totalBytes !== undefined
-      ) {
-        onProgress({
-          bytesDownloaded: event.bytesDownloaded,
-          totalBytes: event.totalBytes,
-          percentage: Math.round(
-            (event.bytesDownloaded / event.totalBytes) * 100
-          ),
-        });
-      }
+  const callback = FileSystem.createDownloadResumable(
+    MODEL_DOWNLOAD_URL,
+    MODEL_LOCAL_PATH,
+    {},
+    (downloadProgress) => {
+      const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
+      onProgress({
+        bytesDownloaded: totalBytesWritten,
+        totalBytes: totalBytesExpectedToWrite,
+        percentage: Math.round((totalBytesWritten / totalBytesExpectedToWrite) * 100),
+      });
     }
   );
 
-  try {
-    const options: DownloadOptions = { overwrite: false };
-    const success = await ExpoLlmMediapipe.downloadModel(
-      MODEL_DOWNLOAD_URL,
-      MODEL_NAME,
-      options
-    );
-    return success;
-  } finally {
-    sub.remove();
-  }
+  const result = await callback.downloadAsync();
+  return result?.status === 200;
 }
 
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
-let _modelHandle: number | null = null;
-let _requestId = 0;
+let _llm: ReturnType<typeof createLLM> | null = null;
 
-/**
- * Loads the model into memory using its stored name.
- * Returns true on success, false if model missing or integrity check fails.
- */
 export async function loadModel(): Promise<boolean> {
-  if (_modelHandle !== null) return true;
+  if (_llm !== null) return true;
 
   const downloaded = await isModelDownloaded();
   if (!downloaded) return false;
 
-  // SHA-256 integrity check via model-verifier
   const verification = await verifyModelIntegrity();
   if (!verification.valid) {
     console.error('[LiteRT] Integrity check failed:', verification.reason);
@@ -105,52 +93,44 @@ export async function loadModel(): Promise<boolean> {
   }
 
   try {
-    _modelHandle = await ExpoLlmMediapipe.createModelFromDownloaded(
-      MODEL_NAME,
-      512,   // maxTokens
-      40,    // topK
-      0.1,   // temperature — low for deterministic medical outputs
-      42     // randomSeed
-    );
+    _llm = createLLM();
+    await _llm.loadModel(MODEL_LOCAL_PATH, {
+      backend: getRecommendedBackend(), // auto-selects GPU/NPU or CPU
+      maxTokens: 512,
+      topK: 40,
+      temperature: 0.1,  // low for deterministic medical outputs
+    });
     return true;
   } catch (e: unknown) {
     console.error('[LiteRT] loadModel failed:', (e as Error).message);
-    _modelHandle = null;
+    _llm = null;
     return false;
   }
 }
 
-/**
- * Runs inference. Throws if engine not loaded — caller must check loadModel().
- */
-export async function runInference(
-  input: InferenceInput
-): Promise<InferenceOutput> {
-  if (_modelHandle === null) {
+export async function runInference(input: InferenceInput): Promise<InferenceOutput> {
+  if (_llm === null) {
     throw new Error('[LiteRT] Engine not ready. Call loadModel() first.');
   }
 
-  const reqId = ++_requestId;
   const start = Date.now();
 
-  const rawText = await ExpoLlmMediapipe.generateResponse(
-    _modelHandle,
-    reqId,
-    input.prompt
+  const prompt = applyGemmaTemplate(
+    [{ role: 'user', content: input.prompt }],
+    SYSTEM_PROMPT
   );
+
+  const rawText = await _llm.sendMessage(prompt);
 
   return { rawText, inferenceTimeMs: Date.now() - start };
 }
 
-/**
- * Releases the model from RAM. Call on screen unmount to free memory.
- */
 export async function unloadModel(): Promise<void> {
-  if (_modelHandle !== null) {
+  if (_llm !== null) {
     try {
-      await ExpoLlmMediapipe.releaseModel(_modelHandle);
+      await _llm.close();
     } catch (_) {}
-    _modelHandle = null;
+    _llm = null;
   }
 }
 
