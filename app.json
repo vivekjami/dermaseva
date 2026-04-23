@@ -24,7 +24,9 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "android.permission.CAMERA"
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "allowBackup": false
     },
@@ -38,7 +40,8 @@
       "expo-camera",
       "expo-sqlite",
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      "expo-llm-mediapipe"
     ],
     "experiments": {
       "typedRoutes": true
@@ -46,6 +49,12 @@
     "assetBundlePatterns": [
       "docs/**/*",
       "assets/**/*"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f7cdb65b-4437-4cff-b90e-fb7a39bdfb1a"
+      }
+    }
   }
 }

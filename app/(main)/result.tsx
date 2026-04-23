@@ -69,7 +69,7 @@ export default function ResultScreen() {
   const runAnalysis = useCallback(async () => {
     try {
       // 1. Check model is present (skip in dev mock mode)
-      const DEV_MOCK_MODE = true;
+      const DEV_MOCK_MODE = false; // PRODUCTION: real inference active
       if (!DEV_MOCK_MODE) {
         const downloaded = await isModelDownloaded();
         if (!downloaded) {

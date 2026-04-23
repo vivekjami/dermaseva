@@ -1,45 +1,118 @@
-WHO GUIDE TO SKIN CONDITIONS IN PRIMARY CARE
-Source: World Health Organization
+WHO Skin Disease Guidelines for Primary Healthcare Workers
 
-CHAPTER 1: FUNGAL SKIN INFECTIONS
+SECTION 1: DERMATOPHYTOSIS (FUNGAL INFECTIONS)
 
-1.1 DERMATOPHYTOSIS (TINEA / RINGWORM)
-Dermatophytosis encompasses infections caused by dermatophyte fungi affecting skin (tinea corporis), scalp (tinea capitis), groin (tinea cruris), feet (tinea pedis), and nails (tinea unguium/onychomycosis). Clinical features vary by site. Tinea corporis: annular lesion with central clearing, raised erythematous scaly border. Tinea cruris: erythematous patch in groin with sharp border. Diagnosis is clinical. Treatment: topical azole antifungals (clotrimazole, miconazole) for 2-4 weeks for skin infections. Scalp and nail infections require systemic treatment (griseofulvin, terbinafine) and specialist referral.
+Tinea corporis (Ringworm)
+Clinical features: Circular or ring-shaped scaly plaques with central clearing.
+Itching is common. May be single or multiple lesions.
+Treatment: Topical antifungal (Clotrimazole 1%, Miconazole 2%) for 2-4 weeks.
+Refer: If immunocompromised, extensive disease, or treatment failure.
 
-1.2 PITYRIASIS VERSICOLOR
-Caused by Malassezia furfur, presents as multiple oval hypo- or hyperpigmented scaly macules on trunk, neck, upper arms. Fluoresces yellow-green under Wood's lamp. Treatment: topical ketoconazole, selenium sulfide, or zinc pyrithione shampoo. Recurrence is common.
+Tinea pedis (Athlete's foot)
+Scaling, maceration between toes. Itching and burning.
+Treatment: Keep feet dry. Topical antifungal for 4 weeks.
 
-CHAPTER 2: PARASITIC SKIN INFECTIONS
+Tinea capitis (Scalp ringworm)
+Scaly patches on scalp with hair loss. Common in children.
+Requires systemic antifungal (not topical alone). Refer to physician.
 
-2.1 SCABIES
-Human scabies is caused by the mite Sarcoptes scabiei var. hominis. Pathognomonic sign: sinuous burrows especially in web spaces of fingers, wrists, ankles. Intense pruritus worse at night. Secondary changes include excoriations, eczematization, impetigo. Crusted (Norwegian) scabies is a hyperinfestation occurring in immunocompromised individuals with thick hyperkeratotic crusts and requires urgent specialist management. Treatment: permethrin 5% applied to all body surfaces from neck down for 8-14 hours; repeat after 1 week. Benzyl benzoate 25% is an alternative. Treat all household contacts simultaneously and wash clothing and bedding at 60°C.
+Pityriasis versicolor
+Hypo or hyperpigmented macules on trunk. Fine scaling.
+Treatment: Ketoconazole 2% shampoo or selenium sulfide applied topically.
+Recurrence is common in tropical climates.
 
-CHAPTER 3: INFLAMMATORY SKIN CONDITIONS
+SECTION 2: SCABIES
 
-3.1 ECZEMA (ATOPIC DERMATITIS)
-Atopic dermatitis is a chronic relapsing inflammatory skin condition. Diagnostic criteria (Hanifin and Rajka): major criteria include pruritus, typical morphology and distribution, chronic relapsing course, personal or family history of atopy. Mild AD: dry skin with mild pruritus, emollients twice daily, avoid triggers. Moderate-severe AD: topical corticosteroids (hydrocortisone 1% for face, mild-moderate potency for body) under medical supervision. Refer moderate-severe cases to PHC.
+Caused by Sarcoptes scabiei var hominis mite.
+Symptoms: Intense itching, worse at night. Burrows in web spaces of fingers,
+wrists, belt line, genitals. Secondary excoriation common.
+Treatment: Permethrin 5% cream (first-line). Apply to whole body from neck down.
+Leave overnight (8-12 hours). Repeat after 1 week.
+Benzyl benzoate 25% lotion is an alternative in resource-limited settings.
+All household and close contacts must be treated simultaneously.
+Wash and hot-dry all clothing and bedding.
 
-3.2 CONTACT DERMATITIS
-Irritant contact dermatitis: direct skin damage by irritant substances. Allergic contact dermatitis: type IV hypersensitivity. Both present with erythema, edema, vesicles, pruritus at contact site. Management: identify and avoid trigger, cool compresses, emollients. Extensive or severe contact dermatitis requires topical corticosteroids under medical supervision.
+SECTION 3: ECZEMA AND DERMATITIS
 
-3.3 MILIARIA (HEAT RASH / PRICKLY HEAT)
-Obstruction of eccrine sweat glands. Miliaria crystallina: superficial clear vesicles, no inflammation. Miliaria rubra: erythematous papules and vesicles, pruritic. Management: cool environment, breathable clothing, avoid heavy creams and ointments.
+Atopic Dermatitis
+Chronic pruritic inflammatory condition. Associated with asthma and allergic rhinitis.
+Features: Dry skin, lichenification, excoriation. Flexural involvement in older children/adults.
+Management: Regular emollients (moisturizers). Avoid triggers (soap, wool, sweat).
+Mild-moderate: Low-potency topical corticosteroids for flares.
+Refer: Moderate-severe disease requiring potent steroids or systemic therapy.
 
-CHAPTER 4: CONDITIONS REQUIRING URGENT REFERRAL
+Contact Dermatitis
+Irritant contact dermatitis: From repeated contact with irritants (detergents, water).
+Allergic contact dermatitis: Type IV hypersensitivity reaction.
+Features: Erythema, vesicles, weeping at site of contact.
+Management: Identify and avoid causative agent. Calamine for mild symptoms.
+Topical corticosteroids for inflammation. Refer if severe.
 
-4.1 LEPROSY
-Caused by Mycobacterium leprae. WHO classification: paucibacillary (1-5 lesions) and multibacillary (more than 5 lesions). Clinical features: hypopigmented or erythematous skin patches with definite loss of sensation; thickened, painful peripheral nerves; positive slit-skin smear for acid-fast bacilli. Early diagnosis and multidrug therapy (MDT) are essential to prevent disability. All suspected cases must be referred for MDT under the National Leprosy Eradication Programme (NLEP).
+SECTION 4: BACTERIAL SKIN INFECTIONS
 
-4.2 CUTANEOUS MALIGNANCIES
-Basal cell carcinoma, squamous cell carcinoma, melanoma. Any pigmented lesion with asymmetry, irregular border, multiple colors, diameter >6mm, evolution (ABCDE criteria) must be urgently referred to dermatologist. Community health workers must not attempt to treat or reassure for these conditions.
+Impetigo
+Superficial bacterial infection. Honey-colored crusted lesions. Common in children.
+Caused by Staphylococcus aureus or Streptococcus pyogenes.
+Treatment: Topical mupirocin for localized disease. Oral antibiotics if extensive.
 
-4.3 CELLULITIS AND SKIN INFECTIONS
-Spreading erythema with warmth, tenderness, systemic fever indicates bacterial skin infection (cellulitis). Requires systemic antibiotics. Refer to PHC same day. Abscess requires surgical drainage by trained personnel.
+Cellulitis
+Deep skin infection causing spreading erythema, warmth, swelling, fever.
+Requires systemic antibiotics. Refer immediately if fever or rapid spread.
 
-CHAPTER 5: DIFFERENTIAL DIAGNOSIS GUIDE
+Folliculitis
+Infection of hair follicles. Small pustules around hair follicles.
+Usually responds to topical antiseptics. Refer recurrent cases.
 
-5.1 DIFFERENTIATING COMMON RASHES
-Ringworm vs Pityriasis rosea: ringworm has annular lesion with central clearing; pityriasis rosea has herald patch followed by Christmas tree distribution.
-Scabies vs insect bites: scabies has characteristic burrows in web spaces and nocturnal pruritus; insect bites are random distribution.
-Eczema vs psoriasis: eczema has ill-defined borders, weeping in acute phase; psoriasis has sharply demarcated silvery plaques, typically extensor surfaces.
-Contact dermatitis vs cellulitis: contact dermatitis has clear exposure history and no fever; cellulitis has systemic symptoms and spreads rapidly.
+SECTION 5: LEPROSY (HANSEN'S DISEASE)
+
+Caused by Mycobacterium leprae. Affects skin and peripheral nerves.
+Clinical features:
+- Hypopigmented or reddish patches with reduced or absent sensation
+- Thickened peripheral nerves
+- Weakness or numbness in hands and feet
+- Skin nodules (lepromatous form)
+
+Diagnosis: Loss of sensation in skin patch is pathognomonic.
+Treatment: Multi-drug therapy (MDT) under physician supervision only.
+Do not attempt treatment at primary level without specialist confirmation.
+This is a notifiable disease. Report all suspected cases to district health officer.
+
+SECTION 6: SKIN CANCER
+
+Warning signs (ABCDE criteria):
+A - Asymmetry: One half does not match the other
+B - Border: Irregular, ragged, or blurred edges
+C - Color: Variation in color (brown, black, red, white)
+D - Diameter: Larger than 6mm (pencil eraser size)
+E - Evolution: Changing in size, shape, or color
+
+Non-healing ulcers, especially on sun-exposed skin in elderly patients.
+Refer ALL suspicious lesions immediately to district hospital.
+Do not biopsy or treat at primary level.
+
+SECTION 7: HEAT-RELATED SKIN CONDITIONS
+
+Miliaria (Heat Rash, Prickly Heat)
+Caused by blocked eccrine sweat glands in hot, humid conditions.
+Miliaria rubra: Red papules and vesicles. Itching and prickling sensation.
+Management: Cool environment, loose cotton clothing, talc-free powder.
+Avoid occlusive clothing. Usually self-limiting in cooler conditions.
+
+SECTION 8: WHEN TO REFER
+
+Immediate referral (same day):
+- Suspected leprosy
+- Suspected malignancy
+- Cellulitis with systemic features
+- Extensive skin loss or blistering
+- Anaphylaxis
+
+Urgent referral (within 24-48 hours):
+- Moderate to severe eczema
+- Infected scabies
+- Impetigo in neonate or immunocompromised
+
+Routine referral:
+- Treatment failure after appropriate therapy
+- Uncertain diagnosis
+- Recurrent conditions requiring investigation
