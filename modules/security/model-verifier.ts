@@ -14,7 +14,7 @@ export interface VerificationResult {
   reason: string;
 }
 
-export async function verifyModelIntegrity(modelPath?: string): Promise<VerificationResult> {
+export async function verifyModelIntegrity(_modelPath?: string): Promise<VerificationResult> {
   const info = await FileSystem.getInfoAsync(MODEL_PATH) as { exists: boolean; size?: number };
   if (!info.exists) {
     return { valid: false, reason: 'Model file not found.' };

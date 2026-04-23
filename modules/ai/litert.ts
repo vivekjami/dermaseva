@@ -9,7 +9,6 @@ import type {
   DownloadProgressEvent,
   DownloadOptions,
 } from 'expo-llm-mediapipe';
-import * as FileSystem from 'expo-file-system/legacy';
 import { verifyModelIntegrity } from '@/modules/security/model-verifier';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
