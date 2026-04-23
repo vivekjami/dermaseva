@@ -40,8 +40,7 @@
       "expo-camera",
       "expo-sqlite",
       "expo-secure-store",
-      "expo-asset",
-      "expo-llm-mediapipe"
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
