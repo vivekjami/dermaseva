@@ -28,7 +28,8 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
-      "allowBackup": false
+      "allowBackup": false,
+      "minSdkVersion": 26
     },
     "web": {
       "bundler": "metro",
@@ -40,7 +41,8 @@
       "expo-camera",
       "expo-sqlite",
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      "react-native-litert-lm"
     ],
     "experiments": {
       "typedRoutes": true
