@@ -8,7 +8,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { loadModel, runInference, isModelDownloaded } from '@/modules/ai/litert';
+import { loadModel, runInference, isModelDownloaded, downloadModel, type DownloadProgress } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
 import { parseModelOutput, type ParsedResult } from '@/modules/ai/output-parser';
 import { useAppStore } from '@/store/app-store';
@@ -69,7 +69,7 @@ export default function ResultScreen() {
   const runAnalysis = useCallback(async () => {
     try {
       // 1. Check model is present (skip in dev mock mode)
-      const DEV_MOCK_MODE = true;
+      const DEV_MOCK_MODE = false; // PRODUCTION: real inference active
       if (!DEV_MOCK_MODE) {
         const downloaded = await isModelDownloaded();
         if (!downloaded) {
