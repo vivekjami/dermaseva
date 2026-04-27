@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Network from 'expo-network';
@@ -57,7 +57,7 @@ export default function ResultScreen() {
   const [inferenceMs, setInferenceMs] = useState(0);
   const [ragNote, setRagNote] = useState('');
   const [otcOverridden, setOtcOverridden] = useState(false);
-  const [otcRule, setOtcRule] = useState<any>(null);
+  const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>({
     bytesDownloaded: 0, totalBytes: MODEL_SIZE_BYTES, percentage: 0,
   });
