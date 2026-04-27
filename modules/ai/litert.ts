@@ -132,7 +132,7 @@ export async function loadModel(): Promise<boolean> {
       topK: 40,
       temperature: 0.1,  // low for deterministic medical outputs
     });
-    console.log('[LiteRT] Gemma 4 E4B loaded successfully');
+    console.warn('[LiteRT] Gemma 4 E4B loaded successfully');
     return true;
   } catch (e: unknown) {
     console.error('[LiteRT] loadModel failed:', (e as Error).message);
