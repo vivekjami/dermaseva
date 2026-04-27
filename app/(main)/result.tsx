@@ -329,13 +329,13 @@ export default function ResultScreen() {
           </View>
         )}
 
-        <ReferralCTA referral={result.doctorReferral} urgent={result.needsUrgentReferral} />
+        <ReferralCTA decision={getReferralDecision(result.severity, result.needsUrgentReferral, result.needsUrgentReferral)} doctorReferralText={result.doctorReferral} />
 
         {ragNote ? (
           <View style={styles.ragNote}><Text style={styles.ragNoteText}>📋 {ragNote}</Text></View>
         ) : null}
 
-        {otcRule && !otcOverridden && <OtcCard rule={otcRule} />}
+        {otcRule && !otcOverridden && <OtcCard rule={otcRule} conditionName={result.conditionName} />}
 
         {otcOverridden && (
           <View style={styles.otcSuppressed}>
