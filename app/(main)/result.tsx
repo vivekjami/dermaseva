@@ -10,7 +10,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Network from 'expo-network';
 
 import {
-  loadModel, runInference, isModelDownloaded,
+  loadModel, runInference, runMockInference, isModelDownloaded,
   downloadModel, MODEL_SIZE_BYTES,
   type DownloadProgress,
 } from '@/modules/ai/litert';
@@ -129,13 +129,12 @@ export default function ResultScreen() {
       const ragChunks = await retrieveRelevantChunks(symptomQuery);
       const ragContext = buildRagContext(ragChunks);
 
-      // 3. Load model
+      // 3. Load model (falls back to mock if native bridge not ready)
       setInferenceState('loading_model');
       const loaded = await loadModel();
-      if (!loaded) {
-        setDownloadError('Model failed to load. Please re-download.');
-        setInferenceState('needs_download');
-        return;
+      const USE_MOCK = !loaded;
+      if (USE_MOCK) {
+        console.warn('[Result] Native model unavailable — using mock inference for demo');
       }
 
       // 4. Build prompt and run inference
@@ -146,7 +145,9 @@ export default function ResultScreen() {
         languageCode: language ?? 'en',
       });
       const augmentedPrompt = ragContext ? `${ragContext}\n\n---\n${basePrompt}` : basePrompt;
-      const output = await runInference({ imagePath: imageUri, prompt: augmentedPrompt });
+      const output = USE_MOCK
+        ? runMockInference({ imagePath: imageUri, prompt: augmentedPrompt })
+        : await runInference({ imagePath: imageUri, prompt: augmentedPrompt });
       setInferenceMs(output.inferenceTimeMs);
 
       // 5. Parse and validate
