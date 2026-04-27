@@ -11,7 +11,7 @@ import * as Network from 'expo-network';
 
 import {
   loadModel, runInference, runMockInference, isModelDownloaded,
-  downloadModel, MODEL_SIZE_BYTES,
+  downloadModel, MODEL_SIZE_BYTES, getLastModelError,
   type DownloadProgress,
 } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
@@ -67,6 +67,7 @@ export default function ResultScreen() {
   });
   const [downloadError, setDownloadError] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [modelError, setModelError] = useState('');
 
   useEffect(() => {
     if (!imageUri) { setInferenceState('error'); return; }
@@ -153,7 +154,9 @@ export default function ResultScreen() {
         const loaded = await loadModel();
         USE_MOCK = !loaded;
         if (USE_MOCK) {
-          console.warn('[Result] LiteRT model failed to load — using mock fallback');
+          const err = getLastModelError();
+          setModelError(err);
+          console.warn('[Result] LiteRT model failed to load:', err);
           setInferenceSource('mock');
         } else {
           setInferenceSource('litert');
@@ -336,13 +339,17 @@ export default function ResultScreen() {
           </Text>
         </View>
 
-        {/* Mock warning banner */}
+        {/* Mock warning banner — shows actual error for debugging */}
         {inferenceSource === 'mock' && (
           <View style={styles.mockBanner}>
             <Text style={styles.mockBannerText}>
               ⚠️ This result is from demo mode, not real AI analysis.
-              {'\n'}Build with <Text style={styles.mockCode}>npx expo run:android</Text> for real on-device inference.
             </Text>
+            {modelError ? (
+              <Text style={[styles.mockBannerText, { marginTop: 8, fontSize: 11, fontFamily: 'monospace' }]}>
+                Error: {modelError}
+              </Text>
+            ) : null}
           </View>
         )}
 

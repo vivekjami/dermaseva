@@ -103,16 +103,28 @@ export async function downloadModel(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _llm: any = null;
+let _lastError: string = '';
+
+/** Returns the reason loadModel() last returned false — shown on-screen for debugging */
+export function getLastModelError(): string {
+  return _lastError;
+}
 
 export async function loadModel(): Promise<boolean> {
   if (_llm !== null) return true;
+  _lastError = '';
 
   const downloaded = await isModelDownloaded();
-  if (!downloaded) return false;
+  if (!downloaded) {
+    _lastError = 'Model file not found or incomplete at: ' + MODEL_LOCAL_PATH;
+    console.error('[LiteRT]', _lastError);
+    return false;
+  }
 
   const verification = await verifyModelIntegrity();
   if (!verification.valid) {
-    console.error('[LiteRT] Integrity check failed:', verification.reason);
+    _lastError = 'Integrity check failed: ' + verification.reason;
+    console.error('[LiteRT]', _lastError);
     return false;
   }
 
@@ -120,18 +132,31 @@ export async function loadModel(): Promise<boolean> {
     // Import react-native-litert-lm — works in native builds (EAS/prebuild).
     // Throws in Expo Go where native modules are not linked.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createLLM, getRecommendedBackend } = require('react-native-litert-lm');
-    _llm = createLLM();
+    const mod = require('react-native-litert-lm');
+
+    if (typeof mod?.createLLM !== 'function') {
+      _lastError = 'react-native-litert-lm loaded but createLLM is not a function. Module keys: ' + Object.keys(mod || {}).join(', ');
+      console.error('[LiteRT]', _lastError);
+      return false;
+    }
+
+    _llm = mod.createLLM();
+    const backend = typeof mod.getRecommendedBackend === 'function'
+      ? mod.getRecommendedBackend()
+      : undefined;
     await _llm.loadModel(MODEL_LOCAL_PATH, {
-      backend: getRecommendedBackend(), // auto-selects GPU/NPU or CPU
+      ...(backend ? { backend } : {}),
       maxTokens: 512,
       topK: 40,
-      temperature: 0.1,  // low for deterministic medical outputs
+      temperature: 0.1,
     });
     console.warn('[LiteRT] Gemma 4 E4B loaded successfully');
     return true;
   } catch (e: unknown) {
-    console.error('[LiteRT] loadModel failed:', (e as Error).message);
+    const msg = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack?.slice(0, 300) : '';
+    _lastError = `loadModel exception: ${msg}${stack ? '\n' + stack : ''}`;
+    console.error('[LiteRT]', _lastError);
     _llm = null;
     return false;
   }
