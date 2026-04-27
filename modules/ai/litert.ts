@@ -107,11 +107,6 @@ let _llm: any = null;
 export async function loadModel(): Promise<boolean> {
   if (_llm !== null) return true;
 
-  if (!isNativeBridgeAvailable()) {
-    console.warn('[LiteRT] Native bridge not available (Expo Go?). Use native build: npx expo run:android');
-    return false;
-  }
-
   const downloaded = await isModelDownloaded();
   if (!downloaded) return false;
 
@@ -122,7 +117,8 @@ export async function loadModel(): Promise<boolean> {
   }
 
   try {
-    // Dynamic import to avoid crash when native module is not linked
+    // Import react-native-litert-lm — works in native builds (EAS/prebuild).
+    // Throws in Expo Go where native modules are not linked.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createLLM, getRecommendedBackend } = require('react-native-litert-lm');
     _llm = createLLM();

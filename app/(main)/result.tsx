@@ -11,7 +11,7 @@ import * as Network from 'expo-network';
 
 import {
   loadModel, runInference, runMockInference, isModelDownloaded,
-  downloadModel, isNativeBridgeAvailable, MODEL_SIZE_BYTES,
+  downloadModel, MODEL_SIZE_BYTES,
   type DownloadProgress,
 } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
@@ -88,14 +88,9 @@ export default function ResultScreen() {
   async function checkAndProceed() {
     setInferenceState('checking');
 
-    // Check if native bridge is available
-    if (!isNativeBridgeAvailable()) {
-      console.warn('[Result] Native LiteRT bridge not available — using mock fallback');
-      setInferenceSource('mock');
-      runAnalysis(true);
-      return;
-    }
-
+    // Skip the native bridge check — just try to load the model directly.
+    // loadModel() handles native bridge errors internally and returns false
+    // if the bridge isn't available (e.g. Expo Go).
     const downloaded = await isModelDownloaded();
     if (!downloaded) {
       setInferenceState('needs_download');
