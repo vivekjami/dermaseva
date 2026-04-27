@@ -223,10 +223,18 @@ const MOCK_CONDITIONS = [
   },
 ];
 
-const DEFAULT_MOCK = {
+interface MockResult {
+  condition: string;
+  confidence: number;
+  severity: 'mild' | 'moderate' | 'severe';
+  keySigns: string[];
+  otc: string | null;
+}
+
+const DEFAULT_MOCK: MockResult = {
   condition: 'Unidentified Skin Condition',
   confidence: 0.25,
-  severity: 'moderate' as const,
+  severity: 'moderate',
   keySigns: ['Visible skin abnormality', 'Further examination needed'],
   otc: null,
 };
@@ -235,7 +243,7 @@ export function runMockInference(input: InferenceInput): InferenceOutput {
   const promptLower = input.prompt.toLowerCase();
 
   // Find best keyword match
-  let bestMatch = DEFAULT_MOCK;
+  let bestMatch: MockResult = DEFAULT_MOCK;
   let bestScore = 0;
 
   for (const mock of MOCK_CONDITIONS) {
@@ -246,7 +254,7 @@ export function runMockInference(input: InferenceInput): InferenceOutput {
     }
   }
 
-  const severity = bestMatch.severity;
+  const severity: 'mild' | 'moderate' | 'severe' = bestMatch.severity;
   return {
     rawText: JSON.stringify({
       conditionName: bestMatch.condition,
