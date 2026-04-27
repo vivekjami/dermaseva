@@ -140,27 +140,56 @@ export async function loadModel(): Promise<boolean> {
       return false;
     }
 
-    _llm = mod.createLLM();
-    const backend = typeof mod.getRecommendedBackend === 'function'
-      ? mod.getRecommendedBackend()
-      : undefined;
-
     // Native LiteRT engine expects a plain filesystem path (no file:// prefix)
-    // FileSystem.documentDirectory returns "file:///data/..." — strip the scheme
     const nativePath = MODEL_LOCAL_PATH.replace(/^file:\/\//, '');
 
-    await _llm.loadModel(nativePath, {
-      ...(backend ? { backend } : {}),
+    const modelConfig = {
       maxTokens: 512,
       topK: 40,
       temperature: 0.1,
-    });
-    console.warn('[LiteRT] Gemma 4 E4B loaded successfully');
+    };
+
+    // Attempt 1: Try with recommended backend (GPU/NPU — faster)
+    const recommendedBackend = typeof mod.getRecommendedBackend === 'function'
+      ? mod.getRecommendedBackend()
+      : undefined;
+
+    try {
+      _llm = mod.createLLM();
+      await _llm.loadModel(nativePath, {
+        ...modelConfig,
+        ...(recommendedBackend ? { backend: recommendedBackend } : {}),
+      });
+      console.warn(`[LiteRT] Gemma 4 E4B loaded successfully (backend: ${recommendedBackend ?? 'default'})`);
+      return true;
+    } catch (gpuErr: unknown) {
+      console.warn('[LiteRT] Recommended backend failed, trying CPU fallback:', (gpuErr as Error).message?.slice(0, 100));
+      _llm = null;
+    }
+
+    // Attempt 2: Try CPU-only (slower but compatible with all devices)
+    try {
+      _llm = mod.createLLM();
+      await _llm.loadModel(nativePath, {
+        ...modelConfig,
+        backend: 'cpu',
+      });
+      console.warn('[LiteRT] Gemma 4 E4B loaded successfully (backend: cpu)');
+      return true;
+    } catch (cpuErr: unknown) {
+      console.warn('[LiteRT] CPU backend also failed:', (cpuErr as Error).message?.slice(0, 100));
+      _llm = null;
+    }
+
+    // Attempt 3: Try with no backend specified at all (let engine decide)
+    _llm = mod.createLLM();
+    await _llm.loadModel(nativePath, modelConfig);
+    console.warn('[LiteRT] Gemma 4 E4B loaded successfully (backend: engine-default)');
     return true;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    const stack = e instanceof Error ? e.stack?.slice(0, 300) : '';
-    _lastError = `loadModel exception: ${msg}${stack ? '\n' + stack : ''}`;
+    const stack = e instanceof Error ? e.stack?.slice(0, 500) : '';
+    _lastError = `All backends failed. Last error: ${msg}${stack ? '\n' + stack : ''}`;
     console.error('[LiteRT]', _lastError);
     _llm = null;
     return false;
