@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 import { Asset } from 'expo-asset';
 import { NHM_ASHA_ASSET, WHO_SKIN_ASSET } from '@/docs/index';
 
-export const RAG_INDEX_VERSION = 5;
+export const RAG_INDEX_VERSION = 6;
 const DB_NAME = 'dermaseva-rag.db';
 const CHUNK_MAX_WORDS = 80;
 const CHUNK_OVERLAP_WORDS = 15;
@@ -123,17 +123,92 @@ function chunkText(text: string): string[] {
   return chunks;
 }
 
-// ── Embedding ─────────────────────────────────────────────────────────────────
-// Deterministic character-hash mock — replace with BAAI/bge-small-en-v1.5
-// when the real embedding model is wired in.
+// ── TF-IDF Embedding ──────────────────────────────────────────────────────────
+// Replaces the old character-hash mock with proper term frequency × inverse
+// document frequency vectors. Still fully on-device, fast, no external deps.
+
+// Medical-aware tokenizer
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')       // keep hyphens for medical terms
+    .split(/[\s]+/)
+    .filter((w) => w.length > 2)           // skip tiny words (a, an, is, in)
+    .map((w) => w.replace(/^-|-$/g, '')); // trim leading/trailing hyphens
+}
+
+// Global vocabulary built at index time
+let _vocabulary: Map<string, number> = new Map(); // word → dimension index
+let _idfScores: Map<string, number> = new Map();  // word → IDF score
+
+function buildVocabulary(allChunks: string[]): void {
+  const docFreq: Map<string, number> = new Map();
+  const allWords: Set<string> = new Set();
+
+  // Count document frequency for each word
+  for (const chunk of allChunks) {
+    const words = new Set(tokenize(chunk));
+    for (const word of words) {
+      allWords.add(word);
+      docFreq.set(word, (docFreq.get(word) ?? 0) + 1);
+    }
+  }
+
+  // Assign dimension indices to the most important words
+  // Sort by document frequency (ascending) — rare words are more discriminative
+  const sorted = [...allWords]
+    .map((w) => ({ word: w, df: docFreq.get(w) ?? 0 }))
+    .sort((a, b) => a.df - b.df);
+
+  _vocabulary = new Map();
+  _idfScores = new Map();
+  const N = allChunks.length;
+
+  for (let i = 0; i < sorted.length && i < EMBEDDING_DIM; i++) {
+    _vocabulary.set(sorted[i].word, i);
+    // IDF = log(N / df) — words appearing in fewer docs get higher scores
+    _idfScores.set(sorted[i].word, Math.log((N + 1) / (sorted[i].df + 1)) + 1);
+  }
+
+  // For words beyond EMBEDDING_DIM, hash them into existing dimensions
+  for (let i = EMBEDDING_DIM; i < sorted.length; i++) {
+    const hashIdx = Math.abs(hashCode(sorted[i].word)) % EMBEDDING_DIM;
+    if (!_vocabulary.has(sorted[i].word)) {
+      _vocabulary.set(sorted[i].word, hashIdx);
+    }
+    _idfScores.set(sorted[i].word, Math.log((N + 1) / (sorted[i].df + 1)) + 1);
+  }
+}
+
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return hash;
+}
+
 export function computeEmbedding(text: string): Float32Array {
   const vec = new Float32Array(EMBEDDING_DIM);
-  const lower = text.toLowerCase();
-  for (let i = 0; i < lower.length; i++) {
-    const code = lower.charCodeAt(i);
-    const idx = (code * 31 + i * 7) % EMBEDDING_DIM;
-    vec[idx] += 1;
+  const words = tokenize(text);
+
+  // Compute term frequency
+  const tf: Map<string, number> = new Map();
+  for (const word of words) {
+    tf.set(word, (tf.get(word) ?? 0) + 1);
   }
+
+  // TF-IDF: tf(word) × idf(word), placed at the word's dimension
+  for (const [word, count] of tf) {
+    const dim = _vocabulary.get(word);
+    if (dim !== undefined) {
+      const idf = _idfScores.get(word) ?? 1;
+      const tfNorm = count / words.length; // normalized term frequency
+      vec[dim] += tfNorm * idf;
+    }
+  }
+
+  // L2 normalize
   let norm = 0;
   for (let i = 0; i < EMBEDDING_DIM; i++) norm += vec[i] * vec[i];
   norm = Math.sqrt(norm) || 1;
@@ -153,10 +228,12 @@ export async function buildIndex(
   const db = await getRagDb();
   await db.execAsync('DELETE FROM chunks; DELETE FROM rag_meta;');
 
-  let totalChunks = 0;
+  // First pass: collect all chunk texts to build vocabulary
+  const allChunkTexts: string[] = [];
+  const sourceChunks: { source: DocSource; chunks: string[] }[] = [];
 
   for (const source of DOC_SOURCES) {
-    onProgress?.(`Indexing ${source.id}…`);
+    onProgress?.(`Reading ${source.id}…`);
     let text = '';
     try {
       text = await readBundledAsset(source.module);
@@ -166,7 +243,21 @@ export async function buildIndex(
     }
 
     const chunks = chunkText(text);
+    sourceChunks.push({ source, chunks });
+    allChunkTexts.push(...chunks);
     onProgress?.(`  ${source.id}: ${chunks.length} chunks`);
+  }
+
+  // Build TF-IDF vocabulary from all chunks
+  onProgress?.('Building TF-IDF vocabulary…');
+  buildVocabulary(allChunkTexts);
+  onProgress?.(`  Vocabulary size: ${_vocabulary.size} terms`);
+
+  // Second pass: compute embeddings and store
+  let totalChunks = 0;
+
+  for (const { source, chunks } of sourceChunks) {
+    onProgress?.(`Embedding ${source.id}…`);
 
     for (let i = 0; i < chunks.length; i++) {
       const embedding = computeEmbedding(chunks[i]);

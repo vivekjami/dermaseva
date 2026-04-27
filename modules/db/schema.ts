@@ -17,7 +17,8 @@ export const CREATE_CASES_TABLE = `
     needs_urgent_referral INTEGER DEFAULT 0,
     thumbnail_base64 TEXT,
     raw_symptoms     TEXT,
-    language_used    TEXT
+    language_used    TEXT,
+    inference_source TEXT    DEFAULT 'unknown'
   );
 `;
 

@@ -2,20 +2,20 @@
 // Hashes raw bytes natively via FileSystem.digestAsync — identical to `sha256sum`.
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { MODEL_LOCAL_PATH, MODEL_SIZE_BYTES } from '@/modules/ai/model-constants';
 
+// Placeholder hash — compute the real SHA-256 after downloading the actual
+// Gemma 4 E4B model file and run: sha256sum gemma-4-E4B-it.litertlm
 export const EXPECTED_MODEL_SHA256 =
-  'f335f2bfd1b758dc6476db16c0f41854bd6237e2658d604cbe566bcefd00a7bc';
-
-export const MODEL_PATH =
-  `${FileSystem.documentDirectory}models/gemma3-1b-it-cpu-int4.task`;
+  '0000000000000000000000000000000000000000000000000000000000000000';
 
 export interface VerificationResult {
   valid: boolean;
   reason: string;
 }
 
-export async function verifyModelIntegrity(_modelPath?: string): Promise<VerificationResult> {
-  const info = await FileSystem.getInfoAsync(MODEL_PATH) as { exists: boolean; size?: number };
+export async function verifyModelIntegrity(): Promise<VerificationResult> {
+  const info = await FileSystem.getInfoAsync(MODEL_LOCAL_PATH) as { exists: boolean; size?: number };
   if (!info.exists) {
     return { valid: false, reason: 'Model file not found.' };
   }
@@ -26,22 +26,31 @@ export async function verifyModelIntegrity(_modelPath?: string): Promise<Verific
   }
 
   const sizeBytes = info.size ?? 0;
-  if (sizeBytes < 3_400_000_000 || sizeBytes > 4_000_000_000) {
-    await FileSystem.deleteAsync(MODEL_PATH, { idempotent: true });
+  const minSize = MODEL_SIZE_BYTES * 0.90; // 90% of expected (3.65 GB)
+  const maxSize = MODEL_SIZE_BYTES * 1.10; // 110% of expected
+
+  if (sizeBytes < minSize || sizeBytes > maxSize) {
+    await FileSystem.deleteAsync(MODEL_LOCAL_PATH, { idempotent: true });
     return {
       valid: false,
-      reason: `Model size ${(sizeBytes / 1e9).toFixed(2)} GB outside expected range. Deleted.`,
+      reason: `Model size ${(sizeBytes / 1e9).toFixed(2)} GB outside expected range (${(minSize / 1e9).toFixed(2)}–${(maxSize / 1e9).toFixed(2)} GB). Deleted.`,
     };
   }
 
+  // Skip hash verification if placeholder hash is still set
+  if (EXPECTED_MODEL_SHA256.startsWith('0000')) {
+    console.warn('[ModelVerifier] Hash is placeholder — size-only check passed.');
+    return { valid: true, reason: 'Size check passed (hash placeholder).' };
+  }
+
   try {
-    const digest = await (FileSystem as unknown as { digestAsync: (path: string, opts: { algorithm: string }) => Promise<string> }).digestAsync(MODEL_PATH, {
+    const digest = await (FileSystem as unknown as { digestAsync: (path: string, opts: { algorithm: string }) => Promise<string> }).digestAsync(MODEL_LOCAL_PATH, {
       algorithm: 'SHA-256',
     });
     const hash: string = (digest ?? '').toLowerCase();
 
     if (hash !== EXPECTED_MODEL_SHA256.toLowerCase()) {
-      await FileSystem.deleteAsync(MODEL_PATH, { idempotent: true });
+      await FileSystem.deleteAsync(MODEL_LOCAL_PATH, { idempotent: true });
       return {
         valid: false,
         reason: `Hash mismatch — expected ${EXPECTED_MODEL_SHA256.slice(0, 12)}… got ${hash.slice(0, 12)}… Deleted.`,

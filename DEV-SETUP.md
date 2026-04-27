@@ -1,90 +1,192 @@
-# DermaSeva — Developer Setup (WSL2)
+# DermaSeva — Developer Setup
 
-**Developer README** – Everything you need to run DermaSeva locally on WSL2.
+**Developer README** – Everything you need to build and run DermaSeva locally.
 
 ## Prerequisites
 
-- Ubuntu on **WSL2**
-- Node.js **22 LTS** (installed via nvm)
-- Expo Go app installed on your Android phone
-- ngrok account with authtoken already configured
+### Required Software
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Node.js | 20+ LTS | [nodejs.org](https://nodejs.org) |
+| Android Studio | Latest | [developer.android.com/studio](https://developer.android.com/studio) |
+| Java JDK | 17 | Comes with Android Studio |
+| Git | Latest | [git-scm.com](https://git-scm.com) |
+
+### Android Studio Setup
+
+After installing Android Studio, open SDK Manager and install:
+- **Android SDK Platform 35** (required — Play Store targetSdkVersion ≥ 35)
+- **Android SDK Build-Tools 35.x**
+- **Android Emulator** (optional — LiteRT needs physical device)
+
+Set `ANDROID_HOME` environment variable:
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export ANDROID_HOME=$HOME/Android/Sdk
+export PATH=$PATH:$ANDROID_HOME/platform-tools
+```
+
+### Physical Device (Required for AI)
+
+LiteRT inference for Gemma 4 E4B requires a **physical ARM Android device** with:
+- **6 GB+ RAM** (model uses ~3.3 GB in memory with GPU)
+- **4 GB free storage** (model file is 3.65 GB)
+- **Android 8.0+** (API 26+)
+- **USB Debugging** enabled (Settings → Developer Options → USB Debugging)
+
+> **⚠️ This app does NOT work in Expo Go.** The `react-native-litert-lm` library uses native C++ (JSI/Nitro Modules) which requires a native build.
+
+---
 
 ## One-Time Setup
 
 ```bash
-# Install project dependencies
+# Clone the repository
+git clone https://github.com/vivekjami/dermaseva.git
+cd dermaseva
+
+# Install dependencies
 npm install
 
-# Add ngrok authtoken (run only once)
-ngrok config add-authtoken YOUR_TOKEN_HERE
+# Generate native android/ directory
+npx expo prebuild --clean
 ```
-
-## Every Dev Session (2 terminals required)
-
-### Terminal 1 — Start ngrok tunnel
-
-```bash
-ngrok http --host-header=localhost 8081
-```
-
-Copy the public URL shown (e.g. `https://xxxx.ngrok-free.dev`).
-
-### Terminal 2 — Start Metro bundler
-
-```bash
-EXPO_PACKAGER_PROXY_URL=https://xxxx.ngrok-free.dev npx expo start --lan --clear
-```
-
-> Replace the URL with the one you copied from Terminal 1.
-
-### Connect your phone
-
-1. Open **Expo Go** on your Android phone.
-2. Scan the QR code shown in Terminal 2.
-
-## Important Notes
-
-- The ngrok URL **changes every session** (free tier) → always copy a fresh URL from Terminal 1.
-- WSL internal IP changes on every reboot → **never** rely on LAN IP. Always use ngrok.
-- Expo’s built-in `--tunnel` flag is currently broken (their free ngrok service is suspended) → manual ngrok is required.
-- Your phone and PC **do not** need to be on the same Wi-Fi network when using ngrok.
-
-## Project Structure
-
-```text
-app/
-├── (onboarding)/
-│   ├── language.tsx
-│   └── worker-type.tsx
-├── (main)/
-│   ├── camera.tsx
-│   ├── result.tsx
-│   └── history.tsx
-├── _layout.tsx
-├── index.tsx
-├── components/
-├── modules/
-│   ├── ai/
-│   ├── rag/
-│   └── safety/
-├── i18n/
-├── store/
-└── constants/
-```
-
-## Current Phase Status
-
-- [x] **Phase 1** — Project scaffold, folder structure, Git setup
-- [x] **Phase 2** — Onboarding flow, i18n (6 languages), navigation
-- [ ] **Phase 3** — Camera capture + image preprocessing
-- [ ] **Phase 4** — On-device AI inference (LiteRT)
-- [ ] **Phase 5** — RAG retrieval + output parsing
-- [ ] **Phase 6** — Safety rules + referral logic
-- [ ] **Phase 7** — SQLite case history
-- [ ] **Phase 8** — UI polish + offline support
-- [ ] **Phase 9** — EAS production build + Play Store submission
 
 ---
 
-**Happy coding> DEV-SETUP.md << 'EOF'*  
-Any questions or blockers? Open an issue or ping the team. 🚀
+## Every Dev Session
+
+### Option A: USB-connected device (recommended)
+
+```bash
+# Connect your Android device via USB
+# Verify it's detected:
+adb devices
+
+# Build and run
+npx expo run:android
+```
+
+### Option B: Wireless debugging (Android 11+)
+
+```bash
+# Pair device (one-time):
+adb pair <device-ip>:<port>
+
+# Connect:
+adb connect <device-ip>:<port>
+
+# Build and run:
+npx expo run:android
+```
+
+### After native code changes
+
+If you modify `app.json` plugins or native configuration:
+```bash
+npx expo prebuild --clean
+npx expo run:android
+```
+
+---
+
+## Model Download
+
+On first launch, the app will prompt to download the Gemma 4 E4B model (~3.65 GB). 
+
+**For faster demo testing**, you can pre-load the model via ADB:
+
+```bash
+# Download the model file
+wget https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm
+
+# Push to device (app must have been launched at least once to create the directory)
+adb push gemma-4-E4B-it.litertlm /data/data/com.vivekjami.dermaseva/files/models/
+```
+
+---
+
+## Project Architecture
+
+```
+Camera Screen
+    │
+    ▼ (photo + symptoms)
+Result Screen
+    │
+    ├── 1. RAG Index Check → Build if needed
+    ├── 2. Retrieve guideline chunks (TF-IDF cosine similarity)
+    ├── 3. Load Gemma 4 E4B via LiteRT-LM
+    ├── 4. Build prompt (system + user + RAG context)
+    ├── 5. Run inference (on-device, ~10-30 seconds)
+    ├── 6. Parse & validate JSON output
+    ├── 7. Cross-check against RAG guidelines
+    ├── 8. Apply OTC eligibility rules
+    ├── 9. Apply referral logic
+    └── 10. Save to SQLite history (PII-stripped)
+```
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `modules/ai/litert.ts` | LiteRT-LM engine wrapper, model download, Gemma 4 E4B |
+| `modules/ai/prompt-builder.ts` | Structured prompt with anti-hallucination rules |
+| `modules/ai/output-parser.ts` | JSON validation, condition name normalization |
+| `modules/rag/indexer.ts` | TF-IDF document chunking and embedding |
+| `modules/rag/retriever.ts` | Cosine similarity search with keyword boosting |
+| `modules/rag/validator.ts` | Cross-check AI output against guidelines |
+| `modules/safety/otc-rules.ts` | NHM ASHA OTC medicine allowlist |
+| `modules/safety/referral-logic.ts` | Severity-based referral decisions |
+| `modules/security/model-verifier.ts` | SHA-256 model integrity verification |
+| `modules/security/privacy-check.ts` | PII detection and sanitisation |
+
+---
+
+## Phase Status
+
+- [x] **Phase 1** — Project scaffold, folder structure, Git setup
+- [x] **Phase 2** — Onboarding flow, i18n (6 languages), navigation
+- [x] **Phase 3** — Camera capture + image preprocessing + symptom input
+- [x] **Phase 4** — On-device AI inference (LiteRT + Gemma 4 E4B)
+- [x] **Phase 5** — RAG retrieval (TF-IDF) + output parsing + validation
+- [x] **Phase 6** — Safety rules + OTC allowlist + referral logic
+- [x] **Phase 7** — SQLite case history + PII sanitisation
+- [x] **Phase 8** — Security hardening (model verification, log sanitiser)
+- [ ] **Phase 9** — CI/CD (GitHub Actions + EAS Build)
+- [ ] **Phase 10** — Play Store submission
+
+---
+
+## Troubleshooting
+
+### "Native bridge not available"
+You're running in Expo Go. Switch to native build:
+```bash
+npx expo prebuild --clean
+npx expo run:android
+```
+
+### Model download fails
+- Check Wi-Fi connection
+- Ensure 4+ GB free storage
+- Try pre-loading via ADB (see above)
+
+### App crashes on inference
+- Device needs 6+ GB RAM
+- Close other apps to free memory
+- GPU backend is auto-selected; if issues persist, the library falls back to CPU
+
+### Build fails after dependency update
+```bash
+npx expo prebuild --clean
+npx expo run:android
+```
+
+---
+
+**Happy coding!** 🚀  
+Any questions or blockers? Open an issue or ping the team.

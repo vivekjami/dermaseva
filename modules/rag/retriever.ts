@@ -1,10 +1,12 @@
 // RAG Retriever: cosine similarity search over the SQLite vector store.
+// Enhanced with keyword boosting and deduplication.
 
 import { getRagDb } from './indexer';
 import { computeEmbedding } from './indexer';
 
 const TOP_K = 3;
-const SIMILARITY_THRESHOLD = 0.10;
+const SIMILARITY_THRESHOLD = 0.05; // TF-IDF scores are naturally lower than dense embeddings
+const KEYWORD_BOOST = 0.15;        // boost when query contains a condition tag
 
 export interface RetrievedChunk {
   id: string;
@@ -37,6 +39,7 @@ export async function retrieveRelevantChunks(
 ): Promise<RetrievedChunk[]> {
   const db = await getRagDb();
   const queryEmbedding = computeEmbedding(queryText);
+  const queryLower = queryText.toLowerCase();
 
   // Load all chunks from SQLite (dataset is small enough — ~50-100 chunks)
   const rows = await db.getAllAsync<{
@@ -48,18 +51,34 @@ export async function retrieveRelevantChunks(
   }>('SELECT id, source, chunk_text, embedding, condition_tags FROM chunks');
 
   const scored: RetrievedChunk[] = [];
+  const seenTexts = new Set<string>(); // for deduplication
 
   for (const row of rows) {
+    // Deduplication: skip if we already have a chunk with the same text
+    const textKey = row.chunk_text.slice(0, 100).toLowerCase();
+    if (seenTexts.has(textKey)) continue;
+
     const chunkEmbedding = blobToFloat32(row.embedding);
-    const similarity = cosineSimilarity(queryEmbedding, chunkEmbedding);
+    let similarity = cosineSimilarity(queryEmbedding, chunkEmbedding);
+
+    // Keyword boosting: if query mentions a condition from this chunk's tags,
+    // boost the similarity score. This helps when TF-IDF misses semantic connections.
+    const tags = row.condition_tags.split(',').map((t) => t.trim().toLowerCase());
+    const hasKeywordMatch = tags.some((tag) =>
+      queryLower.includes(tag) || tag.split(' ').some((word) => word.length > 3 && queryLower.includes(word))
+    );
+    if (hasKeywordMatch) {
+      similarity += KEYWORD_BOOST;
+    }
 
     if (similarity >= SIMILARITY_THRESHOLD) {
+      seenTexts.add(textKey);
       scored.push({
         id: row.id,
         source: row.source,
         chunkText: row.chunk_text,
         similarity,
-        conditionTags: row.condition_tags.split(',').map((t) => t.trim()),
+        conditionTags: tags,
       });
     }
   }

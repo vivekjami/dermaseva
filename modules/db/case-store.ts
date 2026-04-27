@@ -3,6 +3,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import { CREATE_CASES_TABLE, HISTORY_LIMIT, PURGE_COUNT } from './schema';
+import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
 export interface CaseRecord {
   id: string;
@@ -17,6 +18,7 @@ export interface CaseRecord {
   thumbnail_base64: string | null;
   raw_symptoms: string | null;
   language_used: string | null;
+  inference_source: string | null;
 }
 
 let _db: SQLite.SQLiteDatabase | null = null;
@@ -25,6 +27,14 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!_db) {
     _db = await SQLite.openDatabaseAsync('dermaseva.db');
     await _db.execAsync(CREATE_CASES_TABLE);
+    // Migration: add inference_source column if missing (existing DBs)
+    try {
+      await _db.execAsync(
+        `ALTER TABLE cases ADD COLUMN inference_source TEXT DEFAULT 'unknown'`
+      );
+    } catch {
+      // Column already exists — ignore
+    }
   }
   return _db;
 }
@@ -36,12 +46,15 @@ export async function saveCase(record: Omit<CaseRecord, 'id' | 'created_at'>): P
   const id = `case-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const created_at = Date.now();
 
+  // PII sanitisation — strip phone numbers, Aadhaar, email from symptoms
+  const sanitisedSymptoms = sanitiseSymptomsForStorage(record.raw_symptoms ?? null);
+
   await db.runAsync(
     `INSERT INTO cases
       (id, created_at, worker_type, condition_name, confidence, severity,
        otc_suggestion, doctor_referral, needs_urgent_referral,
-       thumbnail_base64, raw_symptoms, language_used)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+       thumbnail_base64, raw_symptoms, language_used, inference_source)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       id,
       created_at,
@@ -53,8 +66,9 @@ export async function saveCase(record: Omit<CaseRecord, 'id' | 'created_at'>): P
       record.doctor_referral ?? null,
       record.needs_urgent_referral ? 1 : 0,
       record.thumbnail_base64 ?? null,
-      record.raw_symptoms ?? null,
+      sanitisedSymptoms,
       record.language_used ?? null,
+      record.inference_source ?? 'unknown',
     ]
   );
 

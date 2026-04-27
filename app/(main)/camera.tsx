@@ -1,6 +1,7 @@
 import {
   View, Text, TouchableOpacity,
   StyleSheet, SafeAreaView, Alert, ActivityIndicator,
+  TextInput, ScrollView,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRef, useState } from 'react';
@@ -9,9 +10,17 @@ import { useTranslation } from 'react-i18next';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 
+const SYMPTOM_TAGS = [
+  'Itching', 'Redness', 'Scaling', 'Burning',
+  'Pain', 'Swelling', 'Patches', 'Blisters',
+];
+
 export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [capturing, setCapturing] = useState(false);
+  const [capturedUri, setCapturedUri] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [symptomText, setSymptomText] = useState('');
   const cameraRef = useRef<CameraView>(null);
   const router = useRouter();
   const { t } = useTranslation();
@@ -39,6 +48,25 @@ export default function CameraScreen() {
         </TouchableOpacity>
       </SafeAreaView>
     );
+  }
+
+  // ── Toggle symptom tag ────────────────────────────────────────────────────
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  }
+
+  // ── Build symptoms string ─────────────────────────────────────────────────
+  function buildSymptomsString(): string {
+    const parts: string[] = [];
+    if (selectedTags.length > 0) {
+      parts.push(`Symptoms: ${selectedTags.join(', ')}`);
+    }
+    if (symptomText.trim().length > 0) {
+      parts.push(symptomText.trim());
+    }
+    return parts.join('. ') || 'No symptom description provided.';
   }
 
   // ── Capture ───────────────────────────────────────────────────────────────
@@ -79,18 +107,15 @@ export default function CameraScreen() {
         }
       );
 
-      // 4. Save to cache directory (will be deleted after result is saved)
+      // 4. Save to cache directory
       const cacheDir = FileSystem.cacheDirectory + 'dermaseva/';
       await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
       const filename = `capture_${Date.now()}.jpg`;
       const finalUri = cacheDir + filename;
       await FileSystem.moveAsync({ from: processed.uri, to: finalUri });
 
-      // 5. Navigate to result screen with the processed image path
-      router.push({
-        pathname: '/(main)/result',
-        params: { imageUri: finalUri },
-      });
+      // 5. Show symptom input overlay
+      setCapturedUri(finalUri);
     } catch (err) {
       Alert.alert('Error', 'Could not capture photo. Please try again.');
       console.error('Capture error:', err);
@@ -99,9 +124,83 @@ export default function CameraScreen() {
     }
   };
 
+  // ── Navigate to result with symptoms ──────────────────────────────────────
+  function handleAnalyze() {
+    if (!capturedUri) return;
+    const symptoms = buildSymptomsString();
+    router.push({
+      pathname: '/(main)/result',
+      params: { imageUri: capturedUri, symptoms },
+    });
+  }
+
+  // ── Retake photo ──────────────────────────────────────────────────────────
+  function handleRetake() {
+    if (capturedUri) {
+      FileSystem.deleteAsync(capturedUri, { idempotent: true }).catch(() => {});
+    }
+    setCapturedUri(null);
+    setSelectedTags([]);
+    setSymptomText('');
+  }
+
+  // ── Symptom input overlay (shown after photo capture) ─────────────────────
+  if (capturedUri) {
+    return (
+      <SafeAreaView style={styles.symptomContainer}>
+        <ScrollView contentContainerStyle={styles.symptomScroll}>
+          <Text style={styles.symptomTitle}>📝 Describe the Symptoms</Text>
+          <Text style={styles.symptomSubtitle}>
+            Select all that apply, then add any details below.
+          </Text>
+
+          {/* Quick-tag buttons */}
+          <View style={styles.tagGrid}>
+            {SYMPTOM_TAGS.map((tag) => {
+              const active = selectedTags.includes(tag);
+              return (
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.tag, active && styles.tagActive]}
+                  onPress={() => toggleTag(tag)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tagText, active && styles.tagTextActive]}>
+                    {tag}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Free-text input */}
+          <TextInput
+            style={styles.textInput}
+            placeholder="Add more details… (e.g., circular patch on left arm, started 3 days ago)"
+            placeholderTextColor="#9a9790"
+            value={symptomText}
+            onChangeText={setSymptomText}
+            multiline
+            maxLength={500}
+            textAlignVertical="top"
+          />
+
+          {/* Action buttons */}
+          <TouchableOpacity style={styles.analyzeBtn} onPress={handleAnalyze} activeOpacity={0.8}>
+            <Text style={styles.analyzeBtnText}>🔬  Analyze with AI</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.retakeBtn} onPress={handleRetake}>
+            <Text style={styles.retakeBtnText}>← Retake Photo</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Camera viewfinder ─────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      {/* Camera viewfinder */}
       <CameraView
         ref={cameraRef}
         style={styles.camera}
@@ -269,4 +368,85 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   btnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  // ── Symptom input overlay ──────────────────────────────────────────────────
+  symptomContainer: {
+    flex: 1,
+    backgroundColor: '#f7f6f2',
+  },
+  symptomScroll: {
+    padding: 24,
+    paddingTop: 56,
+    paddingBottom: 48,
+  },
+  symptomTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#28251d',
+    marginBottom: 8,
+  },
+  symptomSubtitle: {
+    fontSize: 15,
+    color: '#7a7974',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  tagGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 20,
+  },
+  tag: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 99,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#ddd8d0',
+  },
+  tagActive: {
+    backgroundColor: '#01696f',
+    borderColor: '#01696f',
+  },
+  tagText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#28251d',
+  },
+  tagTextActive: {
+    color: '#fff',
+  },
+  textInput: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 15,
+    color: '#28251d',
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: '#ddd8d0',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  analyzeBtn: {
+    backgroundColor: '#01696f',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  analyzeBtnText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  retakeBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  retakeBtnText: {
+    color: '#01696f',
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });

@@ -1,6 +1,6 @@
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, ActivityIndicator, Alert,
+  ScrollView, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ import * as Network from 'expo-network';
 
 import {
   loadModel, runInference, runMockInference, isModelDownloaded,
-  downloadModel, MODEL_SIZE_BYTES,
+  downloadModel, isNativeBridgeAvailable, MODEL_SIZE_BYTES,
   type DownloadProgress,
 } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
@@ -27,6 +27,7 @@ import { SafetyBanner } from '@/components/SafetyBanner';
 import { OtcCard } from '@/components/OtcCard';
 import { saveCase } from '@/modules/db/case-store';
 import { makeThumbnail, deleteOriginal } from '@/modules/db/thumbnail';
+import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
 type InferenceState =
   | 'checking'
@@ -36,6 +37,8 @@ type InferenceState =
   | 'running'
   | 'done'
   | 'error';
+
+type InferenceSource = 'litert' | 'mock';
 
 const SEVERITY_COLORS = { mild: '#437a22', moderate: '#da7101', severe: '#a12c7b' };
 const SEVERITY_BG    = { mild: '#d4dfcc', moderate: '#e7d7c4', severe: '#e0ced7' };
@@ -53,6 +56,7 @@ export default function ResultScreen() {
   const { workerType, language } = useAppStore();
 
   const [inferenceState, setInferenceState] = useState<InferenceState>('checking');
+  const [inferenceSource, setInferenceSource] = useState<InferenceSource>('litert');
   const [result, setResult] = useState<ParsedResult | null>(null);
   const [inferenceMs, setInferenceMs] = useState(0);
   const [ragNote, setRagNote] = useState('');
@@ -62,23 +66,41 @@ export default function ResultScreen() {
     bytesDownloaded: 0, totalBytes: MODEL_SIZE_BYTES, percentage: 0,
   });
   const [downloadError, setDownloadError] = useState('');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (!imageUri) { setInferenceState('error'); return; }
+    setImagePreview(imageUri);
     checkAndProceed();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Clean up image after component unmounts
+  useEffect(() => {
     return () => {
-      FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
+      if (imageUri) {
+        FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function checkAndProceed() {
     setInferenceState('checking');
+
+    // Check if native bridge is available
+    if (!isNativeBridgeAvailable()) {
+      console.warn('[Result] Native LiteRT bridge not available — using mock fallback');
+      setInferenceSource('mock');
+      runAnalysis(true);
+      return;
+    }
+
     const downloaded = await isModelDownloaded();
     if (!downloaded) {
       setInferenceState('needs_download');
     } else {
-      runAnalysis();
+      runAnalysis(false);
     }
   }
 
@@ -88,7 +110,7 @@ export default function ResultScreen() {
     if (net.type !== Network.NetworkStateType.WIFI) {
       Alert.alert(
         'Mobile Data Warning',
-        'You are not on Wi-Fi. Downloading the Gemma 4 AI model uses ~2.58 GB of mobile data. Continue?',
+        'You are not on Wi-Fi. Downloading the Gemma 4 E4B AI model uses ~3.65 GB of mobile data. Continue?',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Download Anyway', onPress: () => doDownload() },
@@ -107,7 +129,7 @@ export default function ResultScreen() {
         setDownloadProgress(progress);
       });
       if (success) {
-        runAnalysis();
+        runAnalysis(false);
       } else {
         setDownloadError('Download failed. Please check your connection and try again.');
         setInferenceState('needs_download');
@@ -118,7 +140,7 @@ export default function ResultScreen() {
     }
   }
 
-  async function runAnalysis() {
+  async function runAnalysis(useMock: boolean) {
     try {
       // 1. Ensure RAG index is built
       const indexed = await isIndexUpToDate();
@@ -129,12 +151,18 @@ export default function ResultScreen() {
       const ragChunks = await retrieveRelevantChunks(symptomQuery);
       const ragContext = buildRagContext(ragChunks);
 
-      // 3. Load model (falls back to mock if native bridge not ready)
-      setInferenceState('loading_model');
-      const loaded = await loadModel();
-      const USE_MOCK = !loaded;
-      if (USE_MOCK) {
-        console.warn('[Result] Native model unavailable — using mock inference for demo');
+      // 3. Load model
+      let USE_MOCK = useMock;
+      if (!USE_MOCK) {
+        setInferenceState('loading_model');
+        const loaded = await loadModel();
+        USE_MOCK = !loaded;
+        if (USE_MOCK) {
+          console.warn('[Result] LiteRT model failed to load — using mock fallback');
+          setInferenceSource('mock');
+        } else {
+          setInferenceSource('litert');
+        }
       }
 
       // 4. Build prompt and run inference
@@ -152,6 +180,8 @@ export default function ResultScreen() {
 
       // 5. Parse and validate
       let parsed = parseModelOutput(output.rawText);
+      parsed = { ...parsed, inferenceSource: USE_MOCK ? 'mock' : 'litert' };
+
       const validation = validateAgainstRag(parsed, ragChunks);
       setRagNote(validation.validationNote);
       const adjustedConfidence = Math.max(0, Math.min(1, parsed.confidence + validation.ragConfidenceBoost));
@@ -179,10 +209,11 @@ export default function ResultScreen() {
       setResult(parsed);
       setInferenceState('done');
 
-      // 6. Save to history
+      // 6. Save to history (with PII sanitisation)
       try {
         const thumb = imageUri ? await makeThumbnail(imageUri) : null;
         if (imageUri) await deleteOriginal(imageUri);
+        const sanitisedSymptoms = sanitiseSymptomsForStorage(symptoms ?? null);
         await saveCase({
           worker_type: workerType ?? 'general',
           condition_name: parsed.conditionName,
@@ -192,8 +223,9 @@ export default function ResultScreen() {
           doctor_referral: parsed.doctorReferral,
           needs_urgent_referral: parsed.needsUrgentReferral,
           thumbnail_base64: thumb,
-          raw_symptoms: symptoms ?? null,
+          raw_symptoms: sanitisedSymptoms,
           language_used: language ?? 'en',
+          inference_source: USE_MOCK ? 'mock' : 'litert',
         });
       } catch (e) { console.warn('[History] Failed to save case:', e); }
 
@@ -220,7 +252,7 @@ export default function ResultScreen() {
         <Text style={styles.errorIcon}>🤖</Text>
         <Text style={styles.errorTitle}>AI Model Required</Text>
         <Text style={styles.errorBody}>
-          DermaSeva uses Gemma 4 — Google's on-device AI model (~2.58 GB).
+          DermaSeva uses Gemma 4 E4B — Google's on-device AI model (~3.65 GB).
           {'\n\n'}It downloads once and runs fully offline. No patient data ever leaves your phone.
           {'\n\n'}Connect to Wi-Fi for best experience.
         </Text>
@@ -243,7 +275,7 @@ export default function ResultScreen() {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.errorIcon}>⬇️</Text>
-        <Text style={styles.errorTitle}>Downloading Gemma 4…</Text>
+        <Text style={styles.errorTitle}>Downloading Gemma 4 E4B…</Text>
         <Text style={styles.loadingSubtext}>
           {formatBytes(downloadProgress.bytesDownloaded)} / {formatBytes(downloadProgress.totalBytes)}
         </Text>
@@ -264,10 +296,10 @@ export default function ResultScreen() {
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator size="large" color="#01696f" />
         <Text style={styles.loadingText}>
-          {inferenceState === 'loading_model' ? 'Loading AI model…' : 'Analyzing skin condition…'}
+          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E4B…' : 'Analyzing skin condition…'}
         </Text>
         <Text style={styles.loadingSubtext}>
-          {inferenceState === 'running' ? 'This may take 10–30 seconds' : ''}
+          {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Initializing on-device AI engine'}
         </Text>
       </SafeAreaView>
     );
@@ -301,6 +333,30 @@ export default function ResultScreen() {
           <Text style={styles.headerTitle}>Screening Result</Text>
           <View style={{ width: 60 }} />
         </View>
+
+        {/* Inference source indicator */}
+        <View style={styles.sourceIndicator}>
+          <Text style={styles.sourceText}>
+            {inferenceSource === 'litert' ? '⚡ On-Device AI (Gemma 4 E4B)' : '🧪 Demo Mode (Mock)'}
+          </Text>
+        </View>
+
+        {/* Mock warning banner */}
+        {inferenceSource === 'mock' && (
+          <View style={styles.mockBanner}>
+            <Text style={styles.mockBannerText}>
+              ⚠️ This result is from demo mode, not real AI analysis.
+              {'\n'}Build with <Text style={styles.mockCode}>npx expo run:android</Text> for real on-device inference.
+            </Text>
+          </View>
+        )}
+
+        {/* Captured image preview */}
+        {imagePreview && (
+          <View style={styles.imagePreviewContainer}>
+            <Image source={{ uri: imagePreview }} style={styles.imagePreview} resizeMode="cover" />
+          </View>
+        )}
 
         {result.isLowConfidence && <SafetyBanner type="low_confidence" />}
         {result.severity === 'severe' && !result.isLowConfidence && <SafetyBanner type="severe" />}
@@ -348,7 +404,9 @@ export default function ResultScreen() {
           <Text style={styles.disclaimerText}>ℹ️ {t('result.disclaimer')}</Text>
         </View>
 
-        <Text style={styles.debugText}>Inference: {inferenceMs}ms</Text>
+        <Text style={styles.debugText}>
+          Inference: {inferenceMs}ms • Source: {inferenceSource}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -358,9 +416,40 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f7f6f2' },
   scroll: { padding: 16 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f7f6f2', padding: 32 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   backBtn: { color: '#01696f', fontSize: 16, fontWeight: '600' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#28251d' },
+  // Source indicator
+  sourceIndicator: {
+    backgroundColor: '#cedcd8',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  sourceText: { fontSize: 12, fontWeight: '700', color: '#01696f' },
+  // Mock warning
+  mockBanner: {
+    backgroundColor: '#fef3cd',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#da7101',
+  },
+  mockBannerText: { fontSize: 13, color: '#964219', lineHeight: 19 },
+  mockCode: { fontFamily: 'monospace', fontWeight: '700' },
+  // Image preview
+  imagePreviewContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+    height: 180,
+    backgroundColor: '#e6e4df',
+  },
+  imagePreview: { width: '100%', height: '100%' },
+  // Cards
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#28251d', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   severityBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, marginBottom: 10 },
   severityText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },

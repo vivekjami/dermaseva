@@ -11,6 +11,7 @@ export interface ParsedResult {
   needsUrgentReferral: boolean;
   isLowConfidence: boolean;        // true if confidence < 0.55
   parseError: string | null;       // non-null if model output was invalid
+  inferenceSource: 'litert' | 'mock'; // which engine produced this result
 }
 
 // Hardcoded fallback referral — shown if model returns empty doctorReferral
@@ -19,6 +20,50 @@ const DEFAULT_REFERRAL =
 
 const CONFIDENCE_THRESHOLD = 0.55;
 const VALID_SEVERITIES = new Set(['mild', 'moderate', 'severe']);
+
+// ── Condition name normalization ──────────────────────────────────────────────
+// Maps common variations to canonical display names used in the app.
+const CONDITION_ALIASES: Record<string, string> = {
+  'tinea corporis': 'Ringworm (Tinea corporis)',
+  'ringworm': 'Ringworm (Tinea corporis)',
+  'dermatophytosis': 'Ringworm (Tinea corporis)',
+  'tinea cruris': 'Ringworm (Tinea cruris)',
+  'jock itch': 'Ringworm (Tinea cruris)',
+  'pityriasis versicolor': 'Tinea Versicolor (Pityriasis versicolor)',
+  'tinea versicolor': 'Tinea Versicolor (Pityriasis versicolor)',
+  'scabies': 'Scabies',
+  'sarcoptes scabiei': 'Scabies',
+  'contact dermatitis': 'Contact Dermatitis',
+  'irritant dermatitis': 'Contact Dermatitis',
+  'allergic contact dermatitis': 'Contact Dermatitis',
+  'heat rash': 'Heat Rash (Miliaria)',
+  'miliaria': 'Heat Rash (Miliaria)',
+  'miliaria rubra': 'Heat Rash (Miliaria)',
+  'prickly heat': 'Heat Rash (Miliaria)',
+  'atopic dermatitis': 'Mild Eczema (Atopic Dermatitis)',
+  'eczema': 'Mild Eczema (Atopic Dermatitis)',
+  'mild eczema': 'Mild Eczema (Atopic Dermatitis)',
+  'leprosy': 'Leprosy (Hansen\'s disease)',
+  'hansen disease': 'Leprosy (Hansen\'s disease)',
+  'hansens disease': 'Leprosy (Hansen\'s disease)',
+  'cellulitis': 'Cellulitis',
+  'impetigo': 'Impetigo',
+  'psoriasis': 'Psoriasis',
+  'melanoma': 'Suspected Melanoma',
+  'skin cancer': 'Suspected Skin Cancer',
+};
+
+function normalizeConditionName(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  // Check direct match first
+  if (CONDITION_ALIASES[lower]) return CONDITION_ALIASES[lower];
+  // Check if any alias key is contained within the raw name
+  for (const [alias, canonical] of Object.entries(CONDITION_ALIASES)) {
+    if (lower.includes(alias)) return canonical;
+  }
+  // No match — return as-is with title case
+  return raw.trim();
+}
 
 export function parseModelOutput(rawText: string): ParsedResult {
   // ── Step 1: Strip markdown code fences if model ignores rule 4 ────────────
@@ -44,13 +89,16 @@ export function parseModelOutput(rawText: string): ParsedResult {
   // ── Step 4: Validate every field ─────────────────────────────────────────
 
   // conditionName
-  const conditionName =
+  const rawCondition =
     typeof raw.conditionName === 'string' && raw.conditionName.trim().length > 0
       ? raw.conditionName.trim().slice(0, 200)
+      : typeof raw.condition_name === 'string' && (raw.condition_name as string).trim().length > 0
+      ? (raw.condition_name as string).trim().slice(0, 200)
       : null;
-  if (!conditionName) {
+  if (!rawCondition) {
     return lowConfidenceFallback('Model returned empty conditionName.');
   }
+  const conditionName = normalizeConditionName(rawCondition);
 
   // confidence — must be 0.0–1.0
   const rawConf = Number(raw.confidence);
@@ -69,27 +117,31 @@ export function parseModelOutput(rawText: string): ParsedResult {
   }
 
   // keySigns — must be an array of strings
-  const keySigns: string[] = Array.isArray(raw.keySigns)
-    ? (raw.keySigns as unknown[])
+  const keySignsRaw = raw.keySigns ?? raw.key_signs;
+  const keySigns: string[] = Array.isArray(keySignsRaw)
+    ? (keySignsRaw as unknown[])
         .filter((s) => typeof s === 'string')
         .map((s) => (s as string).slice(0, 200))
         .slice(0, 6)
     : [];
 
   // otcSuggestion — string or null only
+  const otcRaw = raw.otcSuggestion ?? raw.otc_suggestion;
   const otcSuggestion =
-    typeof raw.otcSuggestion === 'string' && raw.otcSuggestion.trim().length > 0
-      ? raw.otcSuggestion.trim().slice(0, 500)
+    typeof otcRaw === 'string' && (otcRaw as string).trim().length > 0
+      ? (otcRaw as string).trim().slice(0, 500)
       : null;
 
   // doctorReferral — always must be populated; use fallback if empty
+  const referralRaw = raw.doctorReferral ?? raw.doctor_referral;
   const rawReferral =
-    typeof raw.doctorReferral === 'string' ? raw.doctorReferral.trim() : '';
+    typeof referralRaw === 'string' ? (referralRaw as string).trim() : '';
   const doctorReferral =
     rawReferral.length > 0 ? rawReferral.slice(0, 500) : DEFAULT_REFERRAL;
 
   // needsUrgentReferral — override to true if severity === 'severe' (build spec rule)
-  const needsUrgentReferral = severity === 'severe' ? true : raw.needsUrgentReferral === true;
+  const urgentRaw = raw.needsUrgentReferral ?? raw.needs_urgent_referral;
+  const needsUrgentReferral = severity === 'severe' ? true : urgentRaw === true;
 
   const isLowConfidence = confidence < CONFIDENCE_THRESHOLD;
 
@@ -103,6 +155,7 @@ export function parseModelOutput(rawText: string): ParsedResult {
     needsUrgentReferral,
     isLowConfidence,
     parseError: null,
+    inferenceSource: 'litert', // default — caller overrides if mock
   };
 }
 
@@ -118,5 +171,6 @@ function lowConfidenceFallback(reason: string): ParsedResult {
     needsUrgentReferral: false,
     isLowConfidence: true,
     parseError: reason,
+    inferenceSource: 'litert',
   };
 }
