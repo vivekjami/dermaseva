@@ -144,7 +144,12 @@ export async function loadModel(): Promise<boolean> {
     const backend = typeof mod.getRecommendedBackend === 'function'
       ? mod.getRecommendedBackend()
       : undefined;
-    await _llm.loadModel(MODEL_LOCAL_PATH, {
+
+    // Native LiteRT engine expects a plain filesystem path (no file:// prefix)
+    // FileSystem.documentDirectory returns "file:///data/..." — strip the scheme
+    const nativePath = MODEL_LOCAL_PATH.replace(/^file:\/\//, '');
+
+    await _llm.loadModel(nativePath, {
       ...(backend ? { backend } : {}),
       maxTokens: 512,
       topK: 40,
