@@ -1,9 +1,12 @@
 /**
- * litert.ts — Production on-device LLM inference via react-native-litert-lm
- * Uses Google LiteRT-LM runtime with Gemma 4 E2B (~2.58 GB)
- * Fully offline after first model download. No data leaves the device.
+ * litert.ts — On-device LLM inference via react-native-litert-lm
+ * Uses Gemma 4 E2B (~2.58 GB) with CPU backend for maximum compatibility.
+ * Fully offline after first model download.
+ *
+ * API reference: https://www.npmjs.com/package/react-native-litert-lm
  */
 
+import { createLLM, applyGemmaTemplate } from 'react-native-litert-lm';
 import * as FileSystem from 'expo-file-system/legacy';
 import { verifyModelIntegrity } from '@/modules/security/model-verifier';
 import {
@@ -13,12 +16,11 @@ import {
 // Re-export constants so existing consumers don't break
 export { MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH };
 
-// All instructions go in systemPrompt (set during loadModel, handled separately by engine).
-// This keeps the sendMessage input short — only symptoms + worker type.
+// System prompt — passed to applyGemmaTemplate for proper chat formatting
 const SYSTEM_PROMPT = `You are DermaSeva, a skin disease screening assistant for ASHA workers in rural India.
 Analyze the symptom description and respond ONLY with this JSON:
 {"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
-Rules: Always include doctorReferral. Never diagnose cancer/leprosy definitively. Only suggest OTC for fungal infections, scabies, mild eczema, contact dermatitis, heat rash. If unsure set confidence below 0.3. No text outside JSON.`;
+Rules: Always include doctorReferral. Only suggest OTC for fungal infections, scabies, mild eczema, contact dermatitis, heat rash. If unsure set confidence below 0.3. No text outside JSON.`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,22 +38,6 @@ export interface DownloadProgress {
   bytesDownloaded: number;
   totalBytes: number;
   percentage: number;
-}
-
-// ─── Native bridge detection ──────────────────────────────────────────────────
-
-let _nativeAvailable: boolean | null = null;
-
-export function isNativeBridgeAvailable(): boolean {
-  if (_nativeAvailable !== null) return _nativeAvailable;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('react-native-litert-lm');
-    _nativeAvailable = typeof mod?.createLLM === 'function';
-  } catch {
-    _nativeAvailable = false;
-  }
-  return _nativeAvailable;
 }
 
 // ─── Model file management ────────────────────────────────────────────────────
@@ -95,7 +81,7 @@ export async function downloadModel(
 let _llm: any = null;
 let _lastError: string = '';
 
-/** Returns the reason loadModel() last returned false — shown on-screen for debugging */
+/** Returns the reason loadModel() last returned false */
 export function getLastModelError(): string {
   return _lastError;
 }
@@ -106,7 +92,7 @@ export async function loadModel(): Promise<boolean> {
 
   const downloaded = await isModelDownloaded();
   if (!downloaded) {
-    _lastError = 'Model file not found or incomplete at: ' + MODEL_LOCAL_PATH;
+    _lastError = 'Model file not found or incomplete.';
     console.error('[LiteRT]', _lastError);
     return false;
   }
@@ -119,26 +105,17 @@ export async function loadModel(): Promise<boolean> {
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('react-native-litert-lm');
-
-    if (typeof mod?.createLLM !== 'function') {
-      _lastError = 'createLLM not found. Module keys: ' + Object.keys(mod || {}).join(', ');
-      console.error('[LiteRT]', _lastError);
-      return false;
-    }
-
     // Native LiteRT engine expects a plain filesystem path (no file:// prefix)
     const nativePath = MODEL_LOCAL_PATH.replace(/^file:\/\//, '');
 
-    // Single clean attempt — no fallback to avoid native resource leaks
-    _llm = mod.createLLM();
+    _llm = createLLM();
     await _llm.loadModel(nativePath, {
-      maxTokens: 1024,
+      backend: 'cpu',        // CPU via XNNPack — most compatible across all devices
+      maxTokens: 1024,       // Maximum generation (output) length
+      temperature: 0.1,      // Low for deterministic medical outputs
       topK: 40,
-      temperature: 0.1,
     });
-    console.warn('[LiteRT] Gemma 4 E2B loaded successfully');
+    console.warn('[LiteRT] Gemma 4 E2B loaded (backend: cpu)');
     return true;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -157,14 +134,14 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
-  // Hard-truncate prompt to stay under maxTokens (1024).
-  // ~4 chars per token → 3600 chars ≈ 900 tokens, leaving room for response.
-  const maxChars = 3600;
-  const prompt = input.prompt.length > maxChars
-    ? input.prompt.slice(0, maxChars) + '\n[Truncated]'
-    : input.prompt;
+  // Use applyGemmaTemplate (standalone function) to format the prompt
+  // into the Gemma chat template with proper turn markers
+  const formattedPrompt = applyGemmaTemplate(
+    [{ role: 'user', content: input.prompt }],
+    SYSTEM_PROMPT
+  );
 
-  const rawText: string = await _llm.sendMessage(prompt);
+  const rawText: string = await _llm.sendMessage(formattedPrompt);
 
   return { rawText, inferenceTimeMs: Date.now() - start };
 }
@@ -172,15 +149,22 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 export async function unloadModel(): Promise<void> {
   if (_llm !== null) {
     try {
-      await _llm.close();
+      _llm.close();
     } catch (_) { /* ignore */ }
     _llm = null;
   }
 }
 
+// ─── Utility ──────────────────────────────────────────────────────────────────
+
+export function isNativeBridgeAvailable(): boolean {
+  return true; // Always true in native builds (not Expo Go)
+}
+
 // ─── Mock fallback ────────────────────────────────────────────────────────────
 
-interface MockResult {
+interface MockEntry {
+  keywords: string[];
   condition: string;
   confidence: number;
   severity: 'mild' | 'moderate' | 'severe';
@@ -188,7 +172,7 @@ interface MockResult {
   otc: string | null;
 }
 
-const MOCK_CONDITIONS: (MockResult & { keywords: string[] })[] = [
+const MOCK_CONDITIONS: MockEntry[] = [
   {
     keywords: ['ring', 'circular', 'round', 'fungal', 'itching'],
     condition: 'Ringworm (Tinea corporis)',
@@ -213,17 +197,10 @@ const MOCK_CONDITIONS: (MockResult & { keywords: string[] })[] = [
     keySigns: ['Erythematous patches', 'Localized to contact area', 'Itching/burning'],
     otc: 'Apply Calamine lotion, avoid the irritant. OTC hydrocortisone 1% if needed.',
   },
-  {
-    keywords: ['white', 'patch', 'pigment', 'versicolor'],
-    condition: 'Tinea Versicolor (Pityriasis versicolor)',
-    confidence: 0.76,
-    severity: 'mild',
-    keySigns: ['Hypo/hyperpigmented patches', 'Fine scaling', 'Trunk distribution'],
-    otc: 'Apply Ketoconazole 2% shampoo topically for 5–10 minutes daily, 2 weeks.',
-  },
 ];
 
-const DEFAULT_MOCK: MockResult = {
+const DEFAULT_MOCK: MockEntry = {
+  keywords: [],
   condition: 'Unidentified Skin Condition',
   confidence: 0.25,
   severity: 'moderate',
@@ -233,33 +210,26 @@ const DEFAULT_MOCK: MockResult = {
 
 export function runMockInference(input: InferenceInput): InferenceOutput {
   const promptLower = input.prompt.toLowerCase();
-
-  let bestMatch: MockResult = DEFAULT_MOCK;
+  let best: MockEntry = DEFAULT_MOCK;
   let bestScore = 0;
 
-  for (const mock of MOCK_CONDITIONS) {
-    const score = mock.keywords.filter((kw) => promptLower.includes(kw)).length;
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = mock;
-    }
+  for (const m of MOCK_CONDITIONS) {
+    const score = m.keywords.filter((kw) => promptLower.includes(kw)).length;
+    if (score > bestScore) { bestScore = score; best = m; }
   }
 
-  const severity: 'mild' | 'moderate' | 'severe' = bestMatch.severity;
   return {
     rawText: JSON.stringify({
-      conditionName: bestMatch.condition,
-      confidence: bestMatch.confidence,
-      severity,
-      keySigns: bestMatch.keySigns,
-      otcSuggestion: severity === 'mild' ? bestMatch.otc : null,
+      conditionName: best.condition,
+      confidence: best.confidence,
+      severity: best.severity,
+      keySigns: best.keySigns,
+      otcSuggestion: best.severity === 'mild' ? best.otc : null,
       doctorReferral:
-        severity === 'mild'
-          ? 'Monitor for 2 weeks. Visit PHC if no improvement.'
-          : severity === 'moderate'
-          ? 'Visit your nearest PHC within 24 hours.'
-          : 'Refer to district hospital immediately.',
-      needsUrgentReferral: severity === 'severe',
+        best.severity === 'mild' ? 'Monitor for 2 weeks. Visit PHC if no improvement.'
+        : best.severity === 'moderate' ? 'Visit your nearest PHC within 24 hours.'
+        : 'Refer to district hospital immediately.',
+      needsUrgentReferral: best.severity === 'severe',
     }),
     inferenceTimeMs: 320 + Math.floor(Math.random() * 200),
   };

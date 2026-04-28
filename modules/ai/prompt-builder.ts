@@ -1,6 +1,6 @@
-// Builds the constrained prompt for Gemma 4 E2B.
-// All instructions are included here since systemPrompt option
-// is not supported by react-native-litert-lm's loadModel.
+// Builds the USER message for sendMessage().
+// System instructions are passed via applyGemmaTemplate in litert.ts.
+// This only contains: worker type + symptoms — kept concise.
 
 export interface PromptInput {
   symptomDescription: string;
@@ -16,19 +16,9 @@ export function buildPrompt(input: PromptInput): string {
 
   const symptoms = sanitiseInput(input.symptomDescription);
 
-  // Keep prompt concise but complete — must stay under ~900 tokens
-  return `You are a skin disease screening assistant for rural Indian health workers.
-Analyze the symptoms and respond ONLY with valid JSON, no other text.
-
-JSON schema:
-{"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
-
-Rules: Always include doctorReferral. Only suggest OTC for fungal infections, scabies, mild eczema, contact dermatitis, heat rash. If unsure, confidence below 0.3.
-
-${workerLabel} reporting. Language: ${input.languageCode}.
+  return `${workerLabel} reporting. Language: ${input.languageCode}.
 Symptoms: ${symptoms}
-
-Return ONLY the JSON object.`;
+Analyze and return the JSON.`;
 }
 
 // Strip characters that could cause prompt injection
