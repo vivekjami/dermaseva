@@ -13,20 +13,7 @@ import {
 // Re-export constants so existing consumers don't break
 export { MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH };
 
-const SYSTEM_PROMPT = `You are DermaSeva, a clinical decision support tool for ASHA workers in rural India.
-Analyze the described skin condition and the attached skin photograph.
-Respond ONLY with valid JSON in this exact schema:
-{
-  "conditionName": string,
-  "confidence": number (0.0–1.0),
-  "severity": "mild" | "moderate" | "severe",
-  "keySigns": string[],
-  "otcSuggestion": string | null,
-  "doctorReferral": string,
-  "needsUrgentReferral": boolean
-}
-Do not include any text outside the JSON object.
-If you cannot identify the condition from the image, set confidence below 0.3.`;
+const SYSTEM_PROMPT = 'You are DermaSeva, a skin disease screening assistant for rural Indian health workers. Respond ONLY with valid JSON. No markdown, no text outside JSON.';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -144,7 +131,7 @@ export async function loadModel(): Promise<boolean> {
     const nativePath = MODEL_LOCAL_PATH.replace(/^file:\/\//, '');
 
     const modelConfig = {
-      maxTokens: 2048,
+      maxTokens: 1024,
       topK: 40,
       temperature: 0.1,
       systemPrompt: SYSTEM_PROMPT,
@@ -204,9 +191,14 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
-  // sendMessage takes the user prompt directly.
-  // System prompt was already set during loadModel().
-  const rawText: string = await _llm.sendMessage(input.prompt);
+  // Truncate prompt to ~900 tokens (~4 chars/token) to stay under maxTokens (1024).
+  // System prompt is set in loadModel and counted separately by the engine.
+  const maxPromptChars = 3600;
+  const prompt = input.prompt.length > maxPromptChars
+    ? input.prompt.slice(0, maxPromptChars) + '\n[Truncated for token limit]'
+    : input.prompt;
+
+  const rawText: string = await _llm.sendMessage(prompt);
 
   return { rawText, inferenceTimeMs: Date.now() - start };
 }
