@@ -147,6 +147,7 @@ export async function loadModel(): Promise<boolean> {
       maxTokens: 512,
       topK: 40,
       temperature: 0.1,
+      systemPrompt: SYSTEM_PROMPT,
     };
 
     // Attempt 1: Try with recommended backend (GPU/NPU — faster)
@@ -203,13 +204,9 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
-  // Apply Gemma chat template with system prompt
-  const formattedPrompt = _llm.applyGemmaTemplate(
-    [{ role: 'user', content: input.prompt }],
-    SYSTEM_PROMPT
-  );
-
-  const rawText: string = await _llm.sendMessage(formattedPrompt);
+  // sendMessage takes the user prompt directly.
+  // System prompt was already set during loadModel().
+  const rawText: string = await _llm.sendMessage(input.prompt);
 
   return { rawText, inferenceTimeMs: Date.now() - start };
 }
