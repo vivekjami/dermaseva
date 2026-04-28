@@ -132,10 +132,9 @@ export async function loadModel(): Promise<boolean> {
     const nativePath = MODEL_LOCAL_PATH.replace(/^file:\/\//, '');
 
     const modelConfig = {
-      maxTokens: 512,
+      maxTokens: 1024,
       topK: 40,
       temperature: 0.1,
-      systemPrompt: SYSTEM_PROMPT,
     };
 
     // Attempt 1: Try with recommended backend (GPU/NPU — faster)
@@ -189,9 +188,9 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
-  // Hard-truncate prompt to stay under maxTokens (512).
-  // All detailed instructions are in systemPrompt (set in loadModel, not counted here).
-  const maxChars = 1500;
+  // Hard-truncate prompt to stay under maxTokens (1024).
+  // ~4 chars per token → 3600 chars ≈ 900 tokens, leaving room for response.
+  const maxChars = 3600;
   const prompt = input.prompt.length > maxChars
     ? input.prompt.slice(0, maxChars) + '\n[Truncated]'
     : input.prompt;

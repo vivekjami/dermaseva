@@ -1,6 +1,6 @@
-// Builds the user-facing prompt for sendMessage().
-// System instructions (JSON schema, rules) are set in loadModel's systemPrompt.
-// This only contains: worker type + symptoms — kept short for 6GB device support.
+// Builds the constrained prompt for Gemma 4 E2B.
+// All instructions are included here since systemPrompt option
+// is not supported by react-native-litert-lm's loadModel.
 
 export interface PromptInput {
   symptomDescription: string;
@@ -16,9 +16,19 @@ export function buildPrompt(input: PromptInput): string {
 
   const symptoms = sanitiseInput(input.symptomDescription);
 
-  return `${workerLabel} reporting. Language: ${input.languageCode}.
+  // Keep prompt concise but complete — must stay under ~900 tokens
+  return `You are a skin disease screening assistant for rural Indian health workers.
+Analyze the symptoms and respond ONLY with valid JSON, no other text.
+
+JSON schema:
+{"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
+
+Rules: Always include doctorReferral. Only suggest OTC for fungal infections, scabies, mild eczema, contact dermatitis, heat rash. If unsure, confidence below 0.3.
+
+${workerLabel} reporting. Language: ${input.languageCode}.
 Symptoms: ${symptoms}
-Analyze and return the JSON.`;
+
+Return ONLY the JSON object.`;
 }
 
 // Strip characters that could cause prompt injection
@@ -26,5 +36,5 @@ function sanitiseInput(text: string): string {
   return text
     .replace(/[<>{}[\]\\]/g, '')
     .replace(/\n{3,}/g, '\n\n')
-    .slice(0, 400);  // hard cap at 400 chars
+    .slice(0, 400);
 }
