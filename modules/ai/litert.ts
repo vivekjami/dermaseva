@@ -6,7 +6,7 @@
  * API reference: https://www.npmjs.com/package/react-native-litert-lm
  */
 
-import { createLLM, applyGemmaTemplate } from 'react-native-litert-lm';
+import { createLLM } from 'react-native-litert-lm';
 import * as FileSystem from 'expo-file-system/legacy';
 import { verifyModelIntegrity } from '@/modules/security/model-verifier';
 import {
@@ -110,10 +110,11 @@ export async function loadModel(): Promise<boolean> {
 
     _llm = createLLM();
     await _llm.loadModel(nativePath, {
-      backend: 'cpu',        // CPU via XNNPack — most compatible across all devices
-      maxTokens: 1024,       // Maximum generation (output) length
-      temperature: 0.1,      // Low for deterministic medical outputs
+      backend: 'cpu',            // CPU via XNNPack — most compatible across all devices
+      maxTokens: 1024,           // Maximum generation (output) length
+      temperature: 0.1,          // Low for deterministic medical outputs
       topK: 40,
+      systemPrompt: SYSTEM_PROMPT, // Library handles Gemma template formatting internally
     });
     console.warn('[LiteRT] Gemma 4 E2B loaded (backend: cpu)');
     return true;
@@ -134,14 +135,9 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
-  // Use applyGemmaTemplate (standalone function) to format the prompt
-  // into the Gemma chat template with proper turn markers
-  const formattedPrompt = applyGemmaTemplate(
-    [{ role: 'user', content: input.prompt }],
-    SYSTEM_PROMPT
-  );
-
-  const rawText: string = await _llm.sendMessage(formattedPrompt);
+  // sendMessage takes the raw user message.
+  // systemPrompt was set in loadModel — library handles template formatting internally.
+  const rawText: string = await _llm.sendMessage(input.prompt);
 
   return { rawText, inferenceTimeMs: Date.now() - start };
 }
