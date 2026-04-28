@@ -135,6 +135,16 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
+  // Log diagnostics to help debug "Failed to invoke" errors
+  try {
+    const mem = _llm.getMemoryUsage?.();
+    if (mem) {
+      console.warn(`[LiteRT] Memory before inference: RSS=${(mem.residentBytes / 1024 / 1024).toFixed(0)}MB, available=${(mem.availableMemoryBytes / 1024 / 1024).toFixed(0)}MB, low=${mem.isLowMemory}`);
+    }
+  } catch (_) { /* getMemoryUsage may not exist */ }
+
+  console.warn(`[LiteRT] Sending prompt (${input.prompt.length} chars)`);
+
   // sendMessage takes the raw user message.
   // systemPrompt was set in loadModel — library handles template formatting internally.
   const rawText: string = await _llm.sendMessage(input.prompt);
