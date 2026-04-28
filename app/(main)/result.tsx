@@ -4,16 +4,14 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Network from 'expo-network';
 
-import {
-  loadModel, runInference, runMockInference, isModelDownloaded,
-  downloadModel, MODEL_SIZE_BYTES, getLastModelError,
-  type DownloadProgress,
-} from '@/modules/ai/litert';
+// Use the library's useModel hook — the PROVEN working pattern
+import { useModel, GEMMA_4_E2B_IT } from 'react-native-litert-lm';
+
+import { runMockInference, MODEL_SIZE_BYTES } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
 import { parseModelOutput, type ParsedResult } from '@/modules/ai/output-parser';
 import { useAppStore } from '@/store/app-store';
@@ -29,9 +27,13 @@ import { saveCase } from '@/modules/db/case-store';
 import { makeThumbnail, deleteOriginal } from '@/modules/db/thumbnail';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
+// System prompt for the model — passed via useModel config
+const SYSTEM_PROMPT = `You are DermaSeva, a skin disease screening assistant for ASHA workers in rural India.
+Analyze the symptom description and respond ONLY with this JSON:
+{"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
+Rules: Always include doctorReferral. Only suggest OTC for fungal infections, scabies, mild eczema, contact dermatitis, heat rash. If unsure set confidence below 0.3. No text outside JSON.`;
+
 type InferenceState =
-  | 'checking'
-  | 'needs_download'
   | 'downloading'
   | 'loading_model'
   | 'running'
@@ -55,27 +57,68 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { workerType, language } = useAppStore();
 
-  const [inferenceState, setInferenceState] = useState<InferenceState>('checking');
+  // ── useModel hook — matches the official example app exactly ──
+  const modelConfig = useMemo(() => ({
+    backend: 'cpu' as const,
+    systemPrompt: SYSTEM_PROMPT,
+    maxTokens: 1024,
+    temperature: 0.1,
+    topK: 40,
+    autoLoad: true,  // Start downloading/loading immediately
+  }), []);
+
+  const {
+    model,
+    isReady,
+    downloadProgress,
+    error: modelHookError,
+  } = useModel(GEMMA_4_E2B_IT, modelConfig);
+
+  const [inferenceState, setInferenceState] = useState<InferenceState>('downloading');
   const [inferenceSource, setInferenceSource] = useState<InferenceSource>('litert');
   const [result, setResult] = useState<ParsedResult | null>(null);
   const [inferenceMs, setInferenceMs] = useState(0);
   const [ragNote, setRagNote] = useState('');
   const [otcOverridden, setOtcOverridden] = useState(false);
   const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>({
-    bytesDownloaded: 0, totalBytes: MODEL_SIZE_BYTES, percentage: 0,
-  });
-  const [downloadError, setDownloadError] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [modelError, setModelError] = useState('');
   const [analysisError, setAnalysisError] = useState('');
+  const hasStartedAnalysis = useRef(false);
 
   useEffect(() => {
     if (!imageUri) { setInferenceState('error'); return; }
     setImagePreview(imageUri);
-    checkAndProceed();
+  }, [imageUri]);
+
+  // When the model becomes ready, start analysis
+  useEffect(() => {
+    if (isReady && model && !hasStartedAnalysis.current) {
+      hasStartedAnalysis.current = true;
+      runAnalysis(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isReady, model]);
+
+  // If the model hook errors, fall back to mock
+  useEffect(() => {
+    if (modelHookError && !hasStartedAnalysis.current) {
+      hasStartedAnalysis.current = true;
+      setModelError(modelHookError);
+      console.warn('[Result] useModel hook error:', modelHookError);
+      runAnalysis(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelHookError]);
+
+  // Update inference state based on download progress
+  useEffect(() => {
+    if (downloadProgress > 0 && downloadProgress < 1) {
+      setInferenceState('downloading');
+    } else if (downloadProgress >= 1 && !isReady) {
+      setInferenceState('loading_model');
+    }
+  }, [downloadProgress, isReady]);
 
   // Clean up image after component unmounts
   useEffect(() => {
@@ -86,56 +129,6 @@ export default function ResultScreen() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function checkAndProceed() {
-    setInferenceState('checking');
-
-    // Skip the native bridge check — just try to load the model directly.
-    // loadModel() handles native bridge errors internally and returns false
-    // if the bridge isn't available (e.g. Expo Go).
-    const downloaded = await isModelDownloaded();
-    if (!downloaded) {
-      setInferenceState('needs_download');
-    } else {
-      runAnalysis(false);
-    }
-  }
-
-  async function startDownload() {
-    // Warn if not on Wi-Fi
-    const net = await Network.getNetworkStateAsync();
-    if (net.type !== Network.NetworkStateType.WIFI) {
-      Alert.alert(
-        'Mobile Data Warning',
-        'You are not on Wi-Fi. Downloading the Gemma 4 E2B AI model uses ~2.58 GB of mobile data. Continue?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Download Anyway', onPress: () => doDownload() },
-        ]
-      );
-      return;
-    }
-    doDownload();
-  }
-
-  async function doDownload() {
-    setInferenceState('downloading');
-    setDownloadError('');
-    try {
-      const success = await downloadModel((progress) => {
-        setDownloadProgress(progress);
-      });
-      if (success) {
-        runAnalysis(false);
-      } else {
-        setDownloadError('Download failed. Please check your connection and try again.');
-        setInferenceState('needs_download');
-      }
-    } catch (e: unknown) {
-      setDownloadError((e as Error).message ?? 'Download failed. Try again.');
-      setInferenceState('needs_download');
-    }
-  }
 
   async function runAnalysis(useMock: boolean) {
     try {
@@ -148,23 +141,7 @@ export default function ResultScreen() {
       const ragChunks = await retrieveRelevantChunks(symptomQuery);
       const ragContext = buildRagContext(ragChunks);
 
-      // 3. Load model
-      let USE_MOCK = useMock;
-      if (!USE_MOCK) {
-        setInferenceState('loading_model');
-        const loaded = await loadModel();
-        USE_MOCK = !loaded;
-        if (USE_MOCK) {
-          const err = getLastModelError();
-          setModelError(err);
-          console.warn('[Result] LiteRT model failed to load:', err);
-          setInferenceSource('mock');
-        } else {
-          setInferenceSource('litert');
-        }
-      }
-
-      // 4. Build prompt and run inference
+      // 3. Build prompt
       setInferenceState('running');
       const basePrompt = buildPrompt({
         symptomDescription: symptoms ?? 'No symptom description provided.',
@@ -174,13 +151,28 @@ export default function ResultScreen() {
       const augmentedPrompt = ragContext
         ? `Guidelines:\n${ragContext.slice(0, 500)}\n\n---\n${basePrompt}`
         : basePrompt;
-      const output = USE_MOCK
-        ? runMockInference({ imagePath: imageUri, prompt: augmentedPrompt })
-        : await runInference({ imagePath: imageUri, prompt: augmentedPrompt });
-      setInferenceMs(output.inferenceTimeMs);
+
+      // 4. Run inference
+      let USE_MOCK = useMock;
+      let rawText: string;
+      let elapsed: number;
+
+      if (USE_MOCK || !model) {
+        setInferenceSource('mock');
+        const mockOutput = runMockInference({ imagePath: imageUri, prompt: augmentedPrompt });
+        rawText = mockOutput.rawText;
+        elapsed = mockOutput.inferenceTimeMs;
+      } else {
+        setInferenceSource('litert');
+        const start = Date.now();
+        // sendMessage — raw user message, systemPrompt was set in useModel config
+        rawText = await model.sendMessage(augmentedPrompt);
+        elapsed = Date.now() - start;
+      }
+      setInferenceMs(elapsed);
 
       // 5. Parse and validate
-      let parsed = parseModelOutput(output.rawText);
+      let parsed = parseModelOutput(rawText);
       parsed = { ...parsed, inferenceSource: USE_MOCK ? 'mock' : 'litert' };
 
       const validation = validateAgainstRag(parsed, ragChunks);
@@ -210,7 +202,7 @@ export default function ResultScreen() {
       setResult(parsed);
       setInferenceState('done');
 
-      // 6. Save to history (with PII sanitisation)
+      // 6. Save to history
       try {
         const thumb = imageUri ? await makeThumbnail(imageUri) : null;
         if (imageUri) await deleteOriginal(imageUri);
@@ -240,54 +232,27 @@ export default function ResultScreen() {
     }
   }
 
-  // ── Checking ──────────────────────────────────────────────────────────────
-  if (inferenceState === 'checking') {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#01696f" />
-        <Text style={styles.loadingText}>Checking AI model…</Text>
-      </SafeAreaView>
-    );
-  }
-
-  // ── Needs Download ────────────────────────────────────────────────────────
-  if (inferenceState === 'needs_download') {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorIcon}>🤖</Text>
-        <Text style={styles.errorTitle}>AI Model Required</Text>
-        <Text style={styles.errorBody}>
-          DermaSeva uses Gemma 4 E2B — Google's on-device AI model (~2.58 GB).
-          {'\n\n'}It downloads once and runs fully offline. No patient data ever leaves your phone.
-          {'\n\n'}Connect to Wi-Fi for best experience.
-        </Text>
-        {downloadError ? (
-          <Text style={styles.downloadErrorText}>⚠️ {downloadError}</Text>
-        ) : null}
-        <TouchableOpacity style={styles.btn} onPress={startDownload}>
-          <Text style={styles.btnText}>⬇️  Download AI Model</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.btnSecondary} onPress={() => router.back()}>
-          <Text style={styles.btnSecondaryText}>← Go Back</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
-  }
-
-  // ── Downloading ───────────────────────────────────────────────────────────
-  if (inferenceState === 'downloading') {
-    const pct = downloadProgress.percentage;
+  // ── Downloading ──────────────────────────────────────────────────────────
+  if (inferenceState === 'downloading' && !isReady) {
+    const pct = Math.round(downloadProgress * 100);
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.errorIcon}>⬇️</Text>
-        <Text style={styles.errorTitle}>Downloading Gemma 4 E2B…</Text>
-        <Text style={styles.loadingSubtext}>
-          {formatBytes(downloadProgress.bytesDownloaded)} / {formatBytes(downloadProgress.totalBytes)}
+        <Text style={styles.errorTitle}>
+          {pct > 0 ? 'Downloading Gemma 4 E2B…' : 'Preparing AI Model…'}
         </Text>
-        <View style={styles.progressBarBg}>
-          <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
-        </View>
-        <Text style={styles.progressPct}>{pct}%</Text>
+        {pct > 0 && (
+          <>
+            <Text style={styles.loadingSubtext}>
+              {formatBytes(downloadProgress * MODEL_SIZE_BYTES)} / {formatBytes(MODEL_SIZE_BYTES)}
+            </Text>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
+            </View>
+            <Text style={styles.progressPct}>{pct}%</Text>
+          </>
+        )}
+        {pct === 0 && <ActivityIndicator size="large" color="#01696f" style={{ marginTop: 16 }} />}
         <Text style={styles.loadingSubtext}>
           Keep the app open. Do not close or lock your screen.
         </Text>
@@ -325,6 +290,13 @@ export default function ResultScreen() {
               </Text>
             </View>
           ) : null}
+          {modelHookError ? (
+            <View style={{ backgroundColor: '#fef3cd', borderRadius: 10, padding: 12, marginTop: 12, width: '100%' }}>
+              <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#964219', lineHeight: 16 }}>
+                Model hook error: {modelHookError}
+              </Text>
+            </View>
+          ) : null}
           <TouchableOpacity style={[styles.btn, { marginTop: 20 }]} onPress={() => router.back()}>
             <Text style={styles.btnText}>← Retake Photo</Text>
           </TouchableOpacity>
@@ -355,7 +327,7 @@ export default function ResultScreen() {
           </Text>
         </View>
 
-        {/* Mock warning banner — shows actual error for debugging */}
+        {/* Mock warning banner */}
         {inferenceSource === 'mock' && (
           <View style={styles.mockBanner}>
             <Text style={styles.mockBannerText}>
@@ -457,7 +429,6 @@ const styles = StyleSheet.create({
     borderLeftColor: '#da7101',
   },
   mockBannerText: { fontSize: 13, color: '#964219', lineHeight: 19 },
-  mockCode: { fontFamily: 'monospace', fontWeight: '700' },
   // Image preview
   imagePreviewContainer: {
     borderRadius: 12,
@@ -483,7 +454,6 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   btnSecondary: { paddingVertical: 12, paddingHorizontal: 40 },
   btnSecondaryText: { color: '#01696f', fontSize: 15, fontWeight: '600' },
-  downloadErrorText: { color: '#a12c7b', fontSize: 14, marginBottom: 16, textAlign: 'center' },
   progressBarBg: { width: '100%', height: 10, backgroundColor: '#e6e4df', borderRadius: 99, overflow: 'hidden', marginTop: 16, marginBottom: 8 },
   progressBarFill: { height: '100%', backgroundColor: '#01696f', borderRadius: 99 },
   progressPct: { fontSize: 20, fontWeight: '700', color: '#01696f', marginBottom: 12 },
