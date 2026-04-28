@@ -68,6 +68,7 @@ export default function ResultScreen() {
   const [downloadError, setDownloadError] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [modelError, setModelError] = useState('');
+  const [analysisError, setAnalysisError] = useState('');
 
   useEffect(() => {
     if (!imageUri) { setInferenceState('error'); return; }
@@ -228,7 +229,11 @@ export default function ResultScreen() {
       } catch (e) { console.warn('[History] Failed to save case:', e); }
 
     } catch (e: unknown) {
-      console.error('[Result] Inference error:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      const stack = e instanceof Error ? e.stack?.slice(0, 500) : '';
+      const fullError = `${msg}${stack ? '\n' + stack : ''}`;
+      console.error('[Result] Inference error:', fullError);
+      setAnalysisError(fullError);
       setInferenceState('error');
     }
   }
@@ -307,12 +312,21 @@ export default function ResultScreen() {
   if (inferenceState === 'error' || !result) {
     return (
       <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorIcon}>⚠️</Text>
-        <Text style={styles.errorTitle}>Analysis Failed</Text>
-        <Text style={styles.errorBody}>Something went wrong. Please retake the photo in better lighting.</Text>
-        <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
-          <Text style={styles.btnText}>← Retake Photo</Text>
-        </TouchableOpacity>
+        <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 32 }}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorTitle}>Analysis Failed</Text>
+          <Text style={styles.errorBody}>Something went wrong during AI analysis.</Text>
+          {analysisError ? (
+            <View style={{ backgroundColor: '#f3f0ec', borderRadius: 10, padding: 12, marginTop: 12, width: '100%' }}>
+              <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#964219', lineHeight: 16 }}>
+                {analysisError}
+              </Text>
+            </View>
+          ) : null}
+          <TouchableOpacity style={[styles.btn, { marginTop: 20 }]} onPress={() => router.back()}>
+            <Text style={styles.btnText}>← Retake Photo</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </SafeAreaView>
     );
   }
