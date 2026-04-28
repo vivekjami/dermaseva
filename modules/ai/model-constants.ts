@@ -1,11 +1,8 @@
 // Shared constants for the AI model — used by both litert.ts and model-verifier.ts.
 // Extracted to avoid circular dependency.
 //
-// Switched from E4B (3.65 GB) → E2B (2.58 GB):
-//   - E2B runs on Raspberry Pi 5 (CPU-only) — so it works on mid-range phones
-//   - Uses ~1.5 GB RAM vs ~3 GB for E4B
-//   - Still multimodal (text + vision + audio)
-//   - Vision and audio models loaded on demand (not at init)
+// Gemma 4 E2B (2.58 GB) — runs on Raspberry Pi 5 CPU-only,
+// compatible with mid-range Android phones (4GB+ RAM).
 
 import * as FileSystem from 'expo-file-system/legacy';
 
