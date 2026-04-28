@@ -144,7 +144,7 @@ export async function loadModel(): Promise<boolean> {
     const nativePath = MODEL_LOCAL_PATH.replace(/^file:\/\//, '');
 
     const modelConfig = {
-      maxTokens: 512,
+      maxTokens: 2048,
       topK: 40,
       temperature: 0.1,
       systemPrompt: SYSTEM_PROMPT,
