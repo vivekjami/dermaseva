@@ -13,9 +13,12 @@ import {
 // Re-export constants so existing consumers don't break
 export { MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH };
 
-// Short system prompt — keeps token budget for the user message
-const SYSTEM_PROMPT =
-  'You are DermaSeva, a skin disease screening assistant for rural Indian health workers. Respond ONLY with valid JSON. No markdown, no text outside JSON.';
+// All instructions go in systemPrompt (set during loadModel, handled separately by engine).
+// This keeps the sendMessage input short — only symptoms + worker type.
+const SYSTEM_PROMPT = `You are DermaSeva, a skin disease screening assistant for ASHA workers in rural India.
+Analyze the symptom description and respond ONLY with this JSON:
+{"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
+Rules: Always include doctorReferral. Never diagnose cancer/leprosy definitively. Only suggest OTC for fungal infections, scabies, mild eczema, contact dermatitis, heat rash. If unsure set confidence below 0.3. No text outside JSON.`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -129,7 +132,7 @@ export async function loadModel(): Promise<boolean> {
     const nativePath = MODEL_LOCAL_PATH.replace(/^file:\/\//, '');
 
     const modelConfig = {
-      maxTokens: 1024,
+      maxTokens: 512,
       topK: 40,
       temperature: 0.1,
       systemPrompt: SYSTEM_PROMPT,
@@ -186,9 +189,9 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
-  // Hard-truncate prompt to stay safely under maxTokens (1024).
-  // ~4 chars per token → 3200 chars ≈ 800 tokens, leaving room for response.
-  const maxChars = 3200;
+  // Hard-truncate prompt to stay under maxTokens (512).
+  // All detailed instructions are in systemPrompt (set in loadModel, not counted here).
+  const maxChars = 1500;
   const prompt = input.prompt.length > maxChars
     ? input.prompt.slice(0, maxChars) + '\n[Truncated]'
     : input.prompt;
