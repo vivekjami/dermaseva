@@ -171,7 +171,9 @@ export default function ResultScreen() {
         workerType: workerType ?? 'general',
         languageCode: language ?? 'en',
       });
-      const augmentedPrompt = ragContext ? `${ragContext}\n\n---\n${basePrompt}` : basePrompt;
+      const augmentedPrompt = ragContext
+        ? `Guidelines:\n${ragContext.slice(0, 500)}\n\n---\n${basePrompt}`
+        : basePrompt;
       const output = USE_MOCK
         ? runMockInference({ imagePath: imageUri, prompt: augmentedPrompt })
         : await runInference({ imagePath: imageUri, prompt: augmentedPrompt });

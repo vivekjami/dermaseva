@@ -8,12 +8,14 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { verifyModelIntegrity } from '@/modules/security/model-verifier';
 import {
   MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH,
-} from './model-constants';
+} from '@/modules/ai/model-constants';
 
 // Re-export constants so existing consumers don't break
 export { MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH };
 
-const SYSTEM_PROMPT = 'You are DermaSeva, a skin disease screening assistant for rural Indian health workers. Respond ONLY with valid JSON. No markdown, no text outside JSON.';
+// Short system prompt — keeps token budget for the user message
+const SYSTEM_PROMPT =
+  'You are DermaSeva, a skin disease screening assistant for rural Indian health workers. Respond ONLY with valid JSON. No markdown, no text outside JSON.';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,14 +39,9 @@ export interface DownloadProgress {
 
 let _nativeAvailable: boolean | null = null;
 
-/**
- * Checks whether the react-native-litert-lm native JSI bridge is available.
- * Returns false in Expo Go (no native modules). Returns true in native builds.
- */
 export function isNativeBridgeAvailable(): boolean {
   if (_nativeAvailable !== null) return _nativeAvailable;
   try {
-    // Dynamic require — avoids crash if native module is not linked
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('react-native-litert-lm');
     _nativeAvailable = typeof mod?.createLLM === 'function';
@@ -66,7 +63,10 @@ export async function downloadModel(
 ): Promise<boolean> {
   // Ensure the models/ directory exists
   const modelsDir = `${FileSystem.documentDirectory}models/`;
-  await FileSystem.makeDirectoryAsync(modelsDir, { intermediates: true });
+  const dirInfo = await FileSystem.getInfoAsync(modelsDir);
+  if (!dirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(modelsDir, { intermediates: true });
+  }
 
   const callback = FileSystem.createDownloadResumable(
     MODEL_DOWNLOAD_URL,
@@ -116,13 +116,11 @@ export async function loadModel(): Promise<boolean> {
   }
 
   try {
-    // Import react-native-litert-lm — works in native builds (EAS/prebuild).
-    // Throws in Expo Go where native modules are not linked.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('react-native-litert-lm');
 
     if (typeof mod?.createLLM !== 'function') {
-      _lastError = 'react-native-litert-lm loaded but createLLM is not a function. Module keys: ' + Object.keys(mod || {}).join(', ');
+      _lastError = 'react-native-litert-lm loaded but createLLM is not a function. Keys: ' + Object.keys(mod || {}).join(', ');
       console.error('[LiteRT]', _lastError);
       return false;
     }
@@ -148,31 +146,28 @@ export async function loadModel(): Promise<boolean> {
         ...modelConfig,
         ...(recommendedBackend ? { backend: recommendedBackend } : {}),
       });
-      console.warn(`[LiteRT] Gemma 4 E2B loaded successfully (backend: ${recommendedBackend ?? 'default'})`);
+      console.warn(`[LiteRT] Gemma 4 E2B loaded (backend: ${recommendedBackend ?? 'default'})`);
       return true;
     } catch (gpuErr: unknown) {
-      console.warn('[LiteRT] Recommended backend failed, trying CPU fallback:', (gpuErr as Error).message?.slice(0, 100));
+      console.warn('[LiteRT] Recommended backend failed, trying CPU:', (gpuErr as Error).message?.slice(0, 100));
       _llm = null;
     }
 
-    // Attempt 2: Try CPU-only (slower but compatible with all devices)
+    // Attempt 2: CPU-only (slower but compatible with all devices)
     try {
       _llm = mod.createLLM();
-      await _llm.loadModel(nativePath, {
-        ...modelConfig,
-        backend: 'cpu',
-      });
-      console.warn('[LiteRT] Gemma 4 E2B loaded successfully (backend: cpu)');
+      await _llm.loadModel(nativePath, { ...modelConfig, backend: 'cpu' });
+      console.warn('[LiteRT] Gemma 4 E2B loaded (backend: cpu)');
       return true;
     } catch (cpuErr: unknown) {
       console.warn('[LiteRT] CPU backend also failed:', (cpuErr as Error).message?.slice(0, 100));
       _llm = null;
     }
 
-    // Attempt 3: Try with no backend specified at all (let engine decide)
+    // Attempt 3: No backend specified (let engine decide)
     _llm = mod.createLLM();
     await _llm.loadModel(nativePath, modelConfig);
-    console.warn('[LiteRT] Gemma 4 E2B loaded successfully (backend: engine-default)');
+    console.warn('[LiteRT] Gemma 4 E2B loaded (backend: engine-default)');
     return true;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -191,11 +186,11 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
 
   const start = Date.now();
 
-  // Truncate prompt to ~900 tokens (~4 chars/token) to stay under maxTokens (1024).
-  // System prompt is set in loadModel and counted separately by the engine.
-  const maxPromptChars = 3600;
-  const prompt = input.prompt.length > maxPromptChars
-    ? input.prompt.slice(0, maxPromptChars) + '\n[Truncated for token limit]'
+  // Hard-truncate prompt to stay safely under maxTokens (1024).
+  // ~4 chars per token → 3200 chars ≈ 800 tokens, leaving room for response.
+  const maxChars = 3200;
+  const prompt = input.prompt.length > maxChars
+    ? input.prompt.slice(0, maxChars) + '\n[Truncated]'
     : input.prompt;
 
   const rawText: string = await _llm.sendMessage(prompt);
@@ -207,65 +202,12 @@ export async function unloadModel(): Promise<void> {
   if (_llm !== null) {
     try {
       await _llm.close();
-    } catch (_) {}
+    } catch (_) { /* ignore */ }
     _llm = null;
   }
 }
 
-// ─── Mock fallback — LAST RESORT ONLY ─────────────────────────────────────────
-// Used only when native bridge is unavailable AND no alternative exists.
-// Returns keyword-matched results instead of pure random.
-
-const MOCK_CONDITIONS = [
-  {
-    keywords: ['itch', 'circular', 'ring', 'round', 'scaly', 'fungal', 'fungus'],
-    condition: 'Ringworm (Tinea corporis)',
-    confidence: 0.82,
-    severity: 'mild' as const,
-    keySigns: ['Circular lesion', 'Scaling at edges', 'Itching reported'],
-    otc: 'Apply Clotrimazole 1% cream twice daily for 2–4 weeks.',
-  },
-  {
-    keywords: ['night', 'burrow', 'finger', 'wrist', 'family', 'household'],
-    condition: 'Scabies',
-    confidence: 0.79,
-    severity: 'mild' as const,
-    keySigns: ['Intense itching at night', 'Burrows in web spaces', 'Multiple household members affected'],
-    otc: 'Apply Permethrin 5% cream overnight. Treat all household contacts.',
-  },
-  {
-    keywords: ['red', 'swell', 'blister', 'irritant', 'soap', 'detergent', 'contact'],
-    condition: 'Contact Dermatitis',
-    confidence: 0.74,
-    severity: 'moderate' as const,
-    keySigns: ['Erythema at contact site', 'Vesicles or blisters', 'Clear boundary matching irritant'],
-    otc: null,
-  },
-  {
-    keywords: ['hot', 'heat', 'sweat', 'bump', 'prickly'],
-    condition: 'Heat Rash (Miliaria)',
-    confidence: 0.80,
-    severity: 'mild' as const,
-    keySigns: ['Small red papules', 'Areas covered by clothing', 'Hot environment reported'],
-    otc: 'Keep area dry. Apply talc-free powder. Wear loose cotton clothing.',
-  },
-  {
-    keywords: ['dry', 'flaky', 'crack', 'eczema', 'atopic', 'chronic'],
-    condition: 'Mild Eczema (Atopic Dermatitis)',
-    confidence: 0.71,
-    severity: 'mild' as const,
-    keySigns: ['Dry, flaky skin', 'Flexural involvement', 'Chronic itching'],
-    otc: 'Apply fragrance-free moisturizing cream twice daily.',
-  },
-  {
-    keywords: ['patch', 'light', 'dark', 'discolor', 'chest', 'back', 'versicolor'],
-    condition: 'Tinea Versicolor (Pityriasis versicolor)',
-    confidence: 0.76,
-    severity: 'mild' as const,
-    keySigns: ['Hypo/hyperpigmented patches', 'Fine scaling', 'Trunk distribution'],
-    otc: 'Apply Ketoconazole 2% shampoo topically for 5–10 minutes daily, 2 weeks.',
-  },
-];
+// ─── Mock fallback ────────────────────────────────────────────────────────────
 
 interface MockResult {
   condition: string;
@@ -274,6 +216,41 @@ interface MockResult {
   keySigns: string[];
   otc: string | null;
 }
+
+const MOCK_CONDITIONS: (MockResult & { keywords: string[] })[] = [
+  {
+    keywords: ['ring', 'circular', 'round', 'fungal', 'itching'],
+    condition: 'Ringworm (Tinea corporis)',
+    confidence: 0.87,
+    severity: 'mild',
+    keySigns: ['Circular lesion', 'Scaling at edges', 'Itching reported'],
+    otc: 'Apply Clotrimazole 1% cream twice daily for 2–4 weeks.',
+  },
+  {
+    keywords: ['scab', 'itch', 'burrow', 'night', 'family'],
+    condition: 'Scabies',
+    confidence: 0.81,
+    severity: 'moderate',
+    keySigns: ['Intense itching at night', 'Burrow marks', 'Family contacts affected'],
+    otc: null,
+  },
+  {
+    keywords: ['rash', 'red', 'contact', 'chemical', 'irritation'],
+    condition: 'Contact Dermatitis',
+    confidence: 0.74,
+    severity: 'mild',
+    keySigns: ['Erythematous patches', 'Localized to contact area', 'Itching/burning'],
+    otc: 'Apply Calamine lotion, avoid the irritant. OTC hydrocortisone 1% if needed.',
+  },
+  {
+    keywords: ['white', 'patch', 'pigment', 'versicolor'],
+    condition: 'Tinea Versicolor (Pityriasis versicolor)',
+    confidence: 0.76,
+    severity: 'mild',
+    keySigns: ['Hypo/hyperpigmented patches', 'Fine scaling', 'Trunk distribution'],
+    otc: 'Apply Ketoconazole 2% shampoo topically for 5–10 minutes daily, 2 weeks.',
+  },
+];
 
 const DEFAULT_MOCK: MockResult = {
   condition: 'Unidentified Skin Condition',
@@ -286,7 +263,6 @@ const DEFAULT_MOCK: MockResult = {
 export function runMockInference(input: InferenceInput): InferenceOutput {
   const promptLower = input.prompt.toLowerCase();
 
-  // Find best keyword match
   let bestMatch: MockResult = DEFAULT_MOCK;
   let bestScore = 0;
 
