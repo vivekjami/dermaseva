@@ -1,6 +1,6 @@
 /**
  * litert.ts — Production on-device LLM inference via react-native-litert-lm
- * Uses Google LiteRT-LM runtime with Gemma 4 E4B (~3.65 GB)
+ * Uses Google LiteRT-LM runtime with Gemma 4 E2B (~2.58 GB)
  * Fully offline after first model download. No data leaves the device.
  */
 
@@ -160,7 +160,7 @@ export async function loadModel(): Promise<boolean> {
         ...modelConfig,
         ...(recommendedBackend ? { backend: recommendedBackend } : {}),
       });
-      console.warn(`[LiteRT] Gemma 4 E4B loaded successfully (backend: ${recommendedBackend ?? 'default'})`);
+      console.warn(`[LiteRT] Gemma 4 E2B loaded successfully (backend: ${recommendedBackend ?? 'default'})`);
       return true;
     } catch (gpuErr: unknown) {
       console.warn('[LiteRT] Recommended backend failed, trying CPU fallback:', (gpuErr as Error).message?.slice(0, 100));
@@ -174,7 +174,7 @@ export async function loadModel(): Promise<boolean> {
         ...modelConfig,
         backend: 'cpu',
       });
-      console.warn('[LiteRT] Gemma 4 E4B loaded successfully (backend: cpu)');
+      console.warn('[LiteRT] Gemma 4 E2B loaded successfully (backend: cpu)');
       return true;
     } catch (cpuErr: unknown) {
       console.warn('[LiteRT] CPU backend also failed:', (cpuErr as Error).message?.slice(0, 100));
@@ -184,7 +184,7 @@ export async function loadModel(): Promise<boolean> {
     // Attempt 3: Try with no backend specified at all (let engine decide)
     _llm = mod.createLLM();
     await _llm.loadModel(nativePath, modelConfig);
-    console.warn('[LiteRT] Gemma 4 E4B loaded successfully (backend: engine-default)');
+    console.warn('[LiteRT] Gemma 4 E2B loaded successfully (backend: engine-default)');
     return true;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

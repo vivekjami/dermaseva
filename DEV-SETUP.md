@@ -29,9 +29,9 @@ export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 ### Physical Device (Required for AI)
 
-LiteRT inference for Gemma 4 E4B requires a **physical ARM Android device** with:
-- **6 GB+ RAM** (model uses ~3.3 GB in memory with GPU)
-- **4 GB free storage** (model file is 3.65 GB)
+LiteRT inference for Gemma 4 E2B requires a **physical ARM Android device** with:
+- **4 GB+ RAM** (model uses ~1.5 GB in memory)
+- **3 GB free storage** (model file is 2.58 GB)
 - **Android 8.0+** (API 26+)
 - **USB Debugging** enabled (Settings → Developer Options → USB Debugging)
 
@@ -93,16 +93,16 @@ npx expo run:android
 
 ## Model Download
 
-On first launch, the app will prompt to download the Gemma 4 E4B model (~3.65 GB). 
+On first launch, the app will prompt to download the Gemma 4 E2B model (~2.58 GB). 
 
 **For faster demo testing**, you can pre-load the model via ADB:
 
 ```bash
 # Download the model file
-wget https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm
+wget https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm
 
 # Push to device (app must have been launched at least once to create the directory)
-adb push gemma-4-E4B-it.litertlm /data/data/com.vivekjami.dermaseva/files/models/
+adb push gemma-4-E2B-it.litertlm /data/data/com.vivekjami.dermaseva/files/models/
 ```
 
 ---
@@ -117,7 +117,7 @@ Result Screen
     │
     ├── 1. RAG Index Check → Build if needed
     ├── 2. Retrieve guideline chunks (TF-IDF cosine similarity)
-    ├── 3. Load Gemma 4 E4B via LiteRT-LM
+    ├── 3. Load Gemma 4 E2B via LiteRT-LM
     ├── 4. Build prompt (system + user + RAG context)
     ├── 5. Run inference (on-device, ~10-30 seconds)
     ├── 6. Parse & validate JSON output
@@ -133,7 +133,7 @@ Result Screen
 
 | File | Purpose |
 |------|---------|
-| `modules/ai/litert.ts` | LiteRT-LM engine wrapper, model download, Gemma 4 E4B |
+| `modules/ai/litert.ts` | LiteRT-LM engine wrapper, model download, Gemma 4 E2B |
 | `modules/ai/prompt-builder.ts` | Structured prompt with anti-hallucination rules |
 | `modules/ai/output-parser.ts` | JSON validation, condition name normalization |
 | `modules/rag/indexer.ts` | TF-IDF document chunking and embedding |
@@ -151,7 +151,7 @@ Result Screen
 - [x] **Phase 1** — Project scaffold, folder structure, Git setup
 - [x] **Phase 2** — Onboarding flow, i18n (6 languages), navigation
 - [x] **Phase 3** — Camera capture + image preprocessing + symptom input
-- [x] **Phase 4** — On-device AI inference (LiteRT + Gemma 4 E4B)
+- [x] **Phase 4** — On-device AI inference (LiteRT + Gemma 4 E2B)
 - [x] **Phase 5** — RAG retrieval (TF-IDF) + output parsing + validation
 - [x] **Phase 6** — Safety rules + OTC allowlist + referral logic
 - [x] **Phase 7** — SQLite case history + PII sanitisation

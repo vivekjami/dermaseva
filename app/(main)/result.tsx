@@ -106,7 +106,7 @@ export default function ResultScreen() {
     if (net.type !== Network.NetworkStateType.WIFI) {
       Alert.alert(
         'Mobile Data Warning',
-        'You are not on Wi-Fi. Downloading the Gemma 4 E4B AI model uses ~3.65 GB of mobile data. Continue?',
+        'You are not on Wi-Fi. Downloading the Gemma 4 E2B AI model uses ~2.58 GB of mobile data. Continue?',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Download Anyway', onPress: () => doDownload() },
@@ -250,7 +250,7 @@ export default function ResultScreen() {
         <Text style={styles.errorIcon}>🤖</Text>
         <Text style={styles.errorTitle}>AI Model Required</Text>
         <Text style={styles.errorBody}>
-          DermaSeva uses Gemma 4 E4B — Google's on-device AI model (~3.65 GB).
+          DermaSeva uses Gemma 4 E2B — Google's on-device AI model (~2.58 GB).
           {'\n\n'}It downloads once and runs fully offline. No patient data ever leaves your phone.
           {'\n\n'}Connect to Wi-Fi for best experience.
         </Text>
@@ -273,7 +273,7 @@ export default function ResultScreen() {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.errorIcon}>⬇️</Text>
-        <Text style={styles.errorTitle}>Downloading Gemma 4 E4B…</Text>
+        <Text style={styles.errorTitle}>Downloading Gemma 4 E2B…</Text>
         <Text style={styles.loadingSubtext}>
           {formatBytes(downloadProgress.bytesDownloaded)} / {formatBytes(downloadProgress.totalBytes)}
         </Text>
@@ -294,7 +294,7 @@ export default function ResultScreen() {
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator size="large" color="#01696f" />
         <Text style={styles.loadingText}>
-          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E4B…' : 'Analyzing skin condition…'}
+          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing skin condition…'}
         </Text>
         <Text style={styles.loadingSubtext}>
           {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Initializing on-device AI engine'}
@@ -335,7 +335,7 @@ export default function ResultScreen() {
         {/* Inference source indicator */}
         <View style={styles.sourceIndicator}>
           <Text style={styles.sourceText}>
-            {inferenceSource === 'litert' ? '⚡ On-Device AI (Gemma 4 E4B)' : '🧪 Demo Mode (Mock)'}
+            {inferenceSource === 'litert' ? '⚡ On-Device AI (Gemma 4 E2B)' : '🧪 Demo Mode (Mock)'}
           </Text>
         </View>
 
