@@ -73,7 +73,7 @@ export default function ResultScreen() {
     isReady,
     downloadProgress,
     error: modelHookError,
-  } = useModel(`${GEMMA_4_E2B_IT}&gemma3=1`, modelConfig); // Trick the Kotlin backend into enabling multimodal!
+  } = useModel(`${GEMMA_4_E2B_IT}#gemma3`, modelConfig); // Trick the Kotlin backend into enabling multimodal safely!
 
   const [inferenceState, setInferenceState] = useState<InferenceState>('downloading');
   const [inferenceSource, setInferenceSource] = useState<InferenceSource>('litert');
