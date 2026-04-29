@@ -60,12 +60,13 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { workerType, language } = useAppStore();
 
-  // FIX 2: maxTokens 200, not 1024. JSON response is ~80-120 tokens.
-  // The compiled model's 1024-slot buffer must hold input + output COMBINED.
+  // maxTokens: 512 — sweet spot between engine minimum (>200) and context budget.
+  // Input ~245 tokens + 512 output = ~757 total, within the 1024 compiled buffer.
+  // 200 was too low (engine refused to initialize), 1024 was too high (blew context window).
   const modelConfig = useMemo(() => ({
     backend: 'cpu' as const,
     systemPrompt: SYSTEM_PROMPT,
-    maxTokens: 200,
+    maxTokens: 512,
     temperature: 0.1,
     topK: 40,
     autoLoad: true,
