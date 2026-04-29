@@ -28,8 +28,11 @@ import { saveCase } from '@/modules/db/case-store';
 import { makeThumbnail, deleteOriginal } from '@/modules/db/thumbnail';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
-// System prompt for the model — passed via useModel config
-const SYSTEM_PROMPT = `You are DermaSeva, a skin screening tool for ASHA workers in India.
+// System instructions — embedded directly in user message, NOT in useModel config.
+// REASON: The Kotlin bridge sends systemPrompt via a hidden sendMessage() during
+// loadModel. This hidden call corrupts the conversation state on this model, causing
+// ALL subsequent sendMessage calls to crash with "Failed to invoke the compiled model".
+const SYSTEM_INSTRUCTIONS = `You are DermaSeva, a skin screening tool for ASHA workers in India.
 Reply ONLY with this JSON, no other text:
 {"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
 OTC only for: fungal infection, scabies, mild eczema, contact dermatitis, heat rash.
@@ -62,7 +65,6 @@ export default function ResultScreen() {
   const backend = useMemo(() => getRecommendedBackend(), []);
   const modelConfig = useMemo(() => ({
     backend,
-    systemPrompt: SYSTEM_PROMPT,
     maxTokens: 512, // Pre-allocates smaller KV cache to prevent OOM app exits!
     temperature: 0.1,
     topK: 40,
@@ -145,8 +147,8 @@ export default function ResultScreen() {
         languageCode: language ?? 'en',
       });
       const promptToSend = ragContext
-        ? `Guidelines:\n${ragContext.slice(0, 500)}\n\n---\n${basePrompt}`
-        : basePrompt;
+        ? `${SYSTEM_INSTRUCTIONS}\n\nGuidelines:\n${ragContext.slice(0, 500)}\n\n---\n${basePrompt}`
+        : `${SYSTEM_INSTRUCTIONS}\n\n${basePrompt}`;
 
       // 4. Run inference
       let USE_MOCK = useMock;
