@@ -167,7 +167,13 @@ export default function ResultScreen() {
         setInferenceSource('litert');
         const start = Date.now();
         try {
-          rawText = await model.sendMessage(promptToSend);
+          if (imageUri) {
+            // Strip file:// prefix if present, as the native library expects an absolute path
+            const cleanPath = imageUri.replace(/^file:\/\//, '');
+            rawText = await model.sendMessageWithImage(promptToSend, cleanPath);
+          } else {
+            rawText = await model.sendMessage(promptToSend);
+          }
           elapsed = Date.now() - start;
         } catch (inferenceErr: unknown) {
           // Catch native crash, fall back to mock instead of showing error screen
