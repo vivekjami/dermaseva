@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import * as FileSystem from 'expo-file-system/legacy';
+
 
 // Use the library's useModel hook — the PROVEN working pattern
 import { useModel, GEMMA_4_E2B_IT, getRecommendedBackend } from 'react-native-litert-lm';
