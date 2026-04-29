@@ -120,15 +120,8 @@ export default function ResultScreen() {
     }
   }, [downloadProgress, isReady]);
 
-  // Clean up image after component unmounts
-  useEffect(() => {
-    return () => {
-      if (imageUri) {
-        FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Removed aggressive image cleanup. React 18 StrictMode unmounts and remounts 
+  // immediately in dev, which was deleting the image before the model could read it!
 
   async function runAnalysis(useMock: boolean) {
     try {
