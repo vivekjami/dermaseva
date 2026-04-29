@@ -419,54 +419,76 @@ function ResultScreenInner({ modelUrl }: { modelUrl: string }) {
 function useManualGemma4Download() {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function prepare() {
-      // Must contain 'gemma3' and end in '.litertlm' for C++ SDK
       const targetPath = `${FileSystem.documentDirectory}gemma4-trick-gemma3.litertlm`;
       
-      const info = await FileSystem.getInfoAsync(targetPath);
-      if (info.exists) {
-        setModelUrl(`file://${targetPath}`);
-        return;
-      }
-      
-      const res = FileSystem.createDownloadResumable(
-        GEMMA_4_E2B_IT,
-        targetPath,
-        {},
-        (dp) => {
-          if (dp.totalBytesExpectedToWrite > 0) {
-            setProgress(dp.totalBytesWritten / dp.totalBytesExpectedToWrite);
+      try {
+        const info = await FileSystem.getInfoAsync(targetPath);
+        if (info.exists) {
+          // Verify it's not a corrupted 0-byte file from a previous failed attempt
+          if (info.size > 1000000) { 
+            setModelUrl(`file://${targetPath}`);
+            return;
+          } else {
+            await FileSystem.deleteAsync(targetPath); // Delete corrupted file
           }
         }
-      );
-      
-      try {
+        
+        const res = FileSystem.createDownloadResumable(
+          GEMMA_4_E2B_IT,
+          targetPath,
+          {},
+          (dp) => {
+            setDownloadedBytes(dp.totalBytesWritten);
+            if (dp.totalBytesExpectedToWrite > 0) {
+              setProgress(dp.totalBytesWritten / dp.totalBytesExpectedToWrite);
+            }
+          }
+        );
+        
         await res.downloadAsync();
         setModelUrl(`file://${targetPath}`);
       } catch (err) {
         console.error('Manual download failed', err);
+        setError(String(err));
       }
     }
     prepare();
   }, []);
 
-  return { modelUrl, progress };
+  return { modelUrl, progress, downloadedBytes, error };
 }
 
 export default function ResultScreen() {
-  const { modelUrl, progress } = useManualGemma4Download();
+  const { modelUrl, progress, downloadedBytes, error } = useManualGemma4Download();
+
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, styles.center]}>
+        <Text style={[styles.downloadText, { color: 'red' }]}>Download Failed!</Text>
+        <Text style={styles.downloadSub}>{error}</Text>
+      </SafeAreaView>
+    );
+  }
 
   if (!modelUrl) {
+    const downloadedMB = (downloadedBytes / (1024 * 1024)).toFixed(1);
+    const progressText = progress > 0 
+      ? `${(progress * 100).toFixed(0)}%` 
+      : `${downloadedMB} MB downloaded`;
+
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#437a22" />
         <Text style={styles.downloadText}>
-          Downloading Model: {(progress * 100).toFixed(0)}%
+          Downloading Model: {progressText}
         </Text>
         <Text style={styles.downloadSub}>
-          This may take a few minutes. Please don't close the app.
+          Downloading 2.58 GB. This may take a few minutes. Please don't close the app.
         </Text>
       </SafeAreaView>
     );
