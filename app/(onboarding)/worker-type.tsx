@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as SecureStore from 'expo-secure-store';
 import { useAppStore } from '../../store/app-store';
@@ -21,7 +21,7 @@ export default function WorkerTypeScreen() {
 
   const handleFinish = async () => {
     await SecureStore.setItemAsync('ONBOARDING_COMPLETE', 'true');
-    router.replace('/(main)/voice');
+    router.replace('/(main)/voice' as Href);
   };
 
   return (

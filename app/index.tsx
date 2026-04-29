@@ -1,4 +1,4 @@
-import { Redirect } from 'expo-router';
+import { Redirect, type Href } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
@@ -25,6 +25,6 @@ export default function Index() {
   }
 
   return onboarded
-    ? <Redirect href="/(main)/voice" />
+    ? <Redirect href={'/(main)/voice' as Href} />
     : <Redirect href="/(onboarding)/language" />;
 }

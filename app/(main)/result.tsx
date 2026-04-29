@@ -235,7 +235,7 @@ export default function ResultScreen() {
         
         // Save to the new Patient History DB
         if (patientId) {
-          saveHistory(patientId, sanitisedSymptoms, JSON.stringify(parsed));
+          saveHistory(patientId, sanitisedSymptoms ?? '', JSON.stringify(parsed));
         }
 
         // Save to existing case store for analytics
