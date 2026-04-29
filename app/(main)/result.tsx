@@ -431,7 +431,7 @@ function useManualGemma4Download() {
         if (info.exists) {
           // Verify it's not a corrupted 0-byte file from a previous failed attempt
           if (info.size > 1000000) { 
-            setModelUrl(`file://${targetPath}`);
+            setModelUrl(targetPath);
             return;
           } else {
             await FileSystem.deleteAsync(targetPath); // Delete corrupted file
@@ -451,7 +451,7 @@ function useManualGemma4Download() {
         );
         
         await res.downloadAsync();
-        setModelUrl(`file://${targetPath}`);
+        setModelUrl(targetPath);
       } catch (err) {
         console.error('Manual download failed', err);
         setError(String(err));
