@@ -1,15 +1,15 @@
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, ActivityIndicator, Alert, Image,
+  ScrollView, ActivityIndicator, Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as FileSystem from 'expo-file-system/legacy';
 
 // Use the library's useModel hook — the PROVEN working pattern
-import { useModel, GEMMA_4_E2B_IT } from 'react-native-litert-lm';
+import { useModel, GEMMA_4_E2B_IT, getRecommendedBackend } from 'react-native-litert-lm';
 
 import { runMockInference, MODEL_SIZE_BYTES } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
@@ -27,12 +27,8 @@ import { saveCase } from '@/modules/db/case-store';
 import { makeThumbnail, deleteOriginal } from '@/modules/db/thumbnail';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
-// System instructions — embedded directly in user message, NOT in useModel config.
-// REASON: The Kotlin bridge sends systemPrompt via a hidden sendMessage() during
-// loadModel. On older chipsets (Helio G95 etc.) that hidden call fails silently
-// and corrupts the conversation state, causing ALL subsequent sendMessage calls
-// to crash with "Failed to invoke the compiled model".
-const SYSTEM_INSTRUCTIONS = `You are DermaSeva, a skin screening tool for ASHA workers in India.
+// System prompt for the model — passed via useModel config
+const SYSTEM_PROMPT = `You are DermaSeva, a skin screening tool for ASHA workers in India.
 Reply ONLY with this JSON, no other text:
 {"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
 OTC only for: fungal infection, scabies, mild eczema, contact dermatitis, heat rash.
@@ -62,14 +58,14 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { workerType, language } = useAppStore();
 
-  // No systemPrompt — avoids hidden sendMessage during loadModel.
-  // No maxTokens — use library default (1024).
+  const backend = useMemo(() => getRecommendedBackend(), []);
   const modelConfig = useMemo(() => ({
-    backend: 'cpu' as const,
+    backend,
+    systemPrompt: SYSTEM_PROMPT,
     temperature: 0.1,
     topK: 40,
     autoLoad: true,
-  }), []);
+  }), [backend]);
 
   const {
     model,
@@ -143,6 +139,7 @@ export default function ResultScreen() {
       // 2. Retrieve relevant guideline chunks
       const symptomQuery = symptoms ?? 'skin rash itching';
       const ragChunks = await retrieveRelevantChunks(symptomQuery);
+
       const ragContext = buildRagContext(ragChunks);
 
       // 3. Build prompt
@@ -152,10 +149,9 @@ export default function ResultScreen() {
         workerType: workerType ?? 'general',
         languageCode: language ?? 'en',
       });
-      // Embed system instructions directly in the user message.
-      // This avoids the hidden sendMessage during loadModel that corrupts
-      // the conversation on older chipsets.
-      const promptToSend = `${SYSTEM_INSTRUCTIONS}\n\n${basePrompt}`;
+      const promptToSend = ragContext
+        ? `Guidelines:\n${ragContext.slice(0, 500)}\n\n---\n${basePrompt}`
+        : basePrompt;
 
       // 4. Run inference
       let USE_MOCK = useMock;
