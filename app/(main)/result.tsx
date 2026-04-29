@@ -62,6 +62,7 @@ export default function ResultScreen() {
   const modelConfig = useMemo(() => ({
     backend,
     systemPrompt: SYSTEM_PROMPT,
+    maxTokens: 512, // Pre-allocates smaller KV cache to prevent OOM app exits!
     temperature: 0.1,
     topK: 40,
     autoLoad: true,
@@ -72,7 +73,7 @@ export default function ResultScreen() {
     isReady,
     downloadProgress,
     error: modelHookError,
-  } = useModel(GEMMA_4_E2B_IT, modelConfig);
+  } = useModel(`${GEMMA_4_E2B_IT}&gemma3=1`, modelConfig); // Trick the Kotlin backend into enabling multimodal!
 
   const [inferenceState, setInferenceState] = useState<InferenceState>('downloading');
   const [inferenceSource, setInferenceSource] = useState<InferenceSource>('litert');
