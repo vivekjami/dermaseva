@@ -62,14 +62,10 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { workerType, language } = useAppStore();
 
-  const backend = useMemo(() => getRecommendedBackend(), []);
   const modelConfig = useMemo(() => ({
-    backend,
-    maxTokens: 512, // Pre-allocates smaller KV cache to prevent OOM app exits!
-    temperature: 0.1,
-    topK: 40,
+    backend: 'cpu' as const, // Force CPU. GPU delegate is highly unstable on some Androids and causes nativeSendMessage crashes.
     autoLoad: true,
-  }), [backend]);
+  }), []);
 
   const {
     model,
