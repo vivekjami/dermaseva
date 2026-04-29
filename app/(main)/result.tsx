@@ -28,10 +28,13 @@ import { makeThumbnail, deleteOriginal } from '@/modules/db/thumbnail';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
 // System prompt for the model — passed via useModel config
-const SYSTEM_PROMPT = `You are DermaSeva, a skin disease screening assistant for ASHA workers in rural India.
-Analyze the symptom description and respond ONLY with this JSON:
+// FIX 1: Compressed system prompt — ~90 tokens instead of ~420.
+// The compiled .litertlm model has a 1024-token TOTAL context window (input + output).
+const SYSTEM_PROMPT = `You are DermaSeva, a skin screening tool for ASHA workers in India.
+Reply ONLY with this JSON, no other text:
 {"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
-Rules: Always include doctorReferral. Only suggest OTC for fungal infections, scabies, mild eczema, contact dermatitis, heat rash. If unsure set confidence below 0.3. No text outside JSON.`;
+OTC only for: fungal infection, scabies, mild eczema, contact dermatitis, heat rash.
+Always set doctorReferral. Set confidence<0.3 if unsure.`;
 
 type InferenceState =
   | 'downloading'
@@ -57,14 +60,15 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { workerType, language } = useAppStore();
 
-  // ── useModel hook — matches the official example app exactly ──
+  // FIX 2: maxTokens 200, not 1024. JSON response is ~80-120 tokens.
+  // The compiled model's 1024-slot buffer must hold input + output COMBINED.
   const modelConfig = useMemo(() => ({
     backend: 'cpu' as const,
     systemPrompt: SYSTEM_PROMPT,
-    maxTokens: 1024,
+    maxTokens: 200,
     temperature: 0.1,
     topK: 40,
-    autoLoad: true,  // Start downloading/loading immediately
+    autoLoad: true,
   }), []);
 
   const {
@@ -148,9 +152,9 @@ export default function ResultScreen() {
         workerType: workerType ?? 'general',
         languageCode: language ?? 'en',
       });
-      const augmentedPrompt = ragContext
-        ? `Guidelines:\n${ragContext.slice(0, 500)}\n\n---\n${basePrompt}`
-        : basePrompt;
+      // FIX 3: Don't inject RAG context into prompt — it burns ~125 tokens
+      // for marginal benefit on a 2B model. RAG is still used for validation (step 5).
+      const promptToSend = basePrompt;
 
       // 4. Run inference
       let USE_MOCK = useMock;
@@ -159,15 +163,25 @@ export default function ResultScreen() {
 
       if (USE_MOCK || !model) {
         setInferenceSource('mock');
-        const mockOutput = runMockInference({ imagePath: imageUri, prompt: augmentedPrompt });
+        const mockOutput = runMockInference({ imagePath: imageUri, prompt: promptToSend });
         rawText = mockOutput.rawText;
         elapsed = mockOutput.inferenceTimeMs;
       } else {
         setInferenceSource('litert');
         const start = Date.now();
-        // sendMessage — raw user message, systemPrompt was set in useModel config
-        rawText = await model.sendMessage(augmentedPrompt);
-        elapsed = Date.now() - start;
+        try {
+          rawText = await model.sendMessage(promptToSend);
+          elapsed = Date.now() - start;
+        } catch (inferenceErr: unknown) {
+          // Catch native crash, fall back to mock instead of showing error screen
+          const errMsg = inferenceErr instanceof Error ? inferenceErr.message : String(inferenceErr);
+          console.error('[Result] sendMessage failed, falling back to mock:', errMsg);
+          setModelError(errMsg);
+          setInferenceSource('mock');
+          const mockOutput = runMockInference({ imagePath: imageUri, prompt: promptToSend });
+          rawText = mockOutput.rawText;
+          elapsed = mockOutput.inferenceTimeMs;
+        }
       }
       setInferenceMs(elapsed);
 
