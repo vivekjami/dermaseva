@@ -53,7 +53,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function ResultScreenInner({ modelUrl }: { modelUrl: string }) {
+export default function ResultScreen() {
   const { imageUri, symptoms } = useLocalSearchParams<{ imageUri: string; symptoms?: string }>();
   const router = useRouter();
   const { t } = useTranslation();
@@ -74,7 +74,7 @@ function ResultScreenInner({ modelUrl }: { modelUrl: string }) {
     isReady,
     downloadProgress,
     error: modelHookError,
-  } = useModel(modelUrl, modelConfig);
+  } = useModel(GEMMA_4_E2B_IT, modelConfig);
 
   const [inferenceState, setInferenceState] = useState<InferenceState>('downloading');
   const [inferenceSource, setInferenceSource] = useState<InferenceSource>('litert');
@@ -162,12 +162,9 @@ function ResultScreenInner({ modelUrl }: { modelUrl: string }) {
         setInferenceSource('litert');
         const start = Date.now();
         try {
-          if (imageUri) {
-            const cleanPath = imageUri.replace(/^file:\/\//, '');
-            rawText = await model.sendMessageWithImage(promptToSend, cleanPath);
-          } else {
-            rawText = await model.sendMessage(promptToSend);
-          }
+          // The Gemma 4 E2B model provided by LiteRT is strictly text-only.
+          // Using sendMessageWithImage crashes the C++ engine. We must use sendMessage.
+          rawText = await model.sendMessage(promptToSend);
           elapsed = Date.now() - start;
         } catch (inferenceErr: unknown) {
           // Catch native crash, fall back to mock instead of showing error screen
@@ -411,90 +408,6 @@ function ResultScreenInner({ modelUrl }: { modelUrl: string }) {
       </ScrollView>
     </SafeAreaView>
   );
-}
-
-// --- Manual Download Wrapper ---
-// We manually download the model to a file ending in 'gemma3.litertlm' to trick 
-// the Kotlin library into initializing the vision backend without triggering a 404 from HuggingFace.
-function useManualGemma4Download() {
-  const [modelUrl, setModelUrl] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [downloadedBytes, setDownloadedBytes] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function prepare() {
-      const targetPath = `${FileSystem.documentDirectory}gemma4-trick-gemma3.litertlm`;
-      
-      try {
-        const info = await FileSystem.getInfoAsync(targetPath);
-        if (info.exists) {
-          // Verify it's not a corrupted 0-byte file from a previous failed attempt
-          if (info.size > 1000000) { 
-            setModelUrl(targetPath.replace(/^file:\/\//, ''));
-            return;
-          } else {
-            await FileSystem.deleteAsync(targetPath); // Delete corrupted file
-          }
-        }
-        
-        const res = FileSystem.createDownloadResumable(
-          GEMMA_4_E2B_IT,
-          targetPath,
-          {},
-          (dp) => {
-            setDownloadedBytes(dp.totalBytesWritten);
-            if (dp.totalBytesExpectedToWrite > 0) {
-              setProgress(dp.totalBytesWritten / dp.totalBytesExpectedToWrite);
-            }
-          }
-        );
-        
-        await res.downloadAsync();
-        setModelUrl(targetPath.replace(/^file:\/\//, ''));
-      } catch (err) {
-        console.error('Manual download failed', err);
-        setError(String(err));
-      }
-    }
-    prepare();
-  }, []);
-
-  return { modelUrl, progress, downloadedBytes, error };
-}
-
-export default function ResultScreen() {
-  const { modelUrl, progress, downloadedBytes, error } = useManualGemma4Download();
-
-  if (error) {
-    return (
-      <SafeAreaView style={[styles.container, styles.center]}>
-        <Text style={[styles.downloadText, { color: 'red' }]}>Download Failed!</Text>
-        <Text style={styles.downloadSub}>{error}</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (!modelUrl) {
-    const downloadedMB = (downloadedBytes / (1024 * 1024)).toFixed(1);
-    const progressText = progress > 0 
-      ? `${(progress * 100).toFixed(0)}%` 
-      : `${downloadedMB} MB downloaded`;
-
-    return (
-      <SafeAreaView style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color="#437a22" />
-        <Text style={styles.downloadText}>
-          Downloading Model: {progressText}
-        </Text>
-        <Text style={styles.downloadSub}>
-          Downloading 2.58 GB. This may take a few minutes. Please don't close the app.
-        </Text>
-      </SafeAreaView>
-    );
-  }
-
-  return <ResultScreenInner modelUrl={modelUrl} />;
 }
 
 const styles = StyleSheet.create({
