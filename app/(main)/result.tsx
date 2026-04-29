@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as FileSystem from 'expo-file-system';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -52,7 +53,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export default function ResultScreen() {
+function ResultScreenInner({ modelUrl }: { modelUrl: string }) {
   const { imageUri, symptoms } = useLocalSearchParams<{ imageUri: string; symptoms?: string }>();
   const router = useRouter();
   const { t } = useTranslation();
@@ -73,7 +74,7 @@ export default function ResultScreen() {
     isReady,
     downloadProgress,
     error: modelHookError,
-  } = useModel(`${GEMMA_4_E2B_IT}#gemma3`, modelConfig); // Trick the Kotlin backend into enabling multimodal safely!
+  } = useModel(modelUrl, modelConfig);
 
   const [inferenceState, setInferenceState] = useState<InferenceState>('downloading');
   const [inferenceSource, setInferenceSource] = useState<InferenceSource>('litert');
@@ -162,7 +163,6 @@ export default function ResultScreen() {
         const start = Date.now();
         try {
           if (imageUri) {
-            // Strip file:// prefix if present, as the native library expects an absolute path
             const cleanPath = imageUri.replace(/^file:\/\//, '');
             rawText = await model.sendMessageWithImage(promptToSend, cleanPath);
           } else {
@@ -413,8 +413,73 @@ export default function ResultScreen() {
   );
 }
 
+// --- Manual Download Wrapper ---
+// We manually download the model to a file ending in 'gemma3.litertlm' to trick 
+// the Kotlin library into initializing the vision backend without triggering a 404 from HuggingFace.
+function useManualGemma4Download() {
+  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    async function prepare() {
+      // Must contain 'gemma3' and end in '.litertlm' for C++ SDK
+      const targetPath = `${FileSystem.documentDirectory}gemma4-trick-gemma3.litertlm`;
+      
+      const info = await FileSystem.getInfoAsync(targetPath);
+      if (info.exists) {
+        setModelUrl(`file://${targetPath}`);
+        return;
+      }
+      
+      const res = FileSystem.createDownloadResumable(
+        GEMMA_4_E2B_IT,
+        targetPath,
+        {},
+        (dp) => {
+          if (dp.totalBytesExpectedToWrite > 0) {
+            setProgress(dp.totalBytesWritten / dp.totalBytesExpectedToWrite);
+          }
+        }
+      );
+      
+      try {
+        await res.downloadAsync();
+        setModelUrl(`file://${targetPath}`);
+      } catch (err) {
+        console.error('Manual download failed', err);
+      }
+    }
+    prepare();
+  }, []);
+
+  return { modelUrl, progress };
+}
+
+export default function ResultScreen() {
+  const { modelUrl, progress } = useManualGemma4Download();
+
+  if (!modelUrl) {
+    return (
+      <SafeAreaView style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#437a22" />
+        <Text style={styles.downloadText}>
+          Downloading Model: {(progress * 100).toFixed(0)}%
+        </Text>
+        <Text style={styles.downloadSub}>
+          This may take a few minutes. Please don't close the app.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  return <ResultScreenInner modelUrl={modelUrl} />;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f7f6f2' },
+  center: { justifyContent: 'center', alignItems: 'center', padding: 24 },
+  downloadText: { marginTop: 16, fontSize: 18, fontWeight: '600', color: '#1a1a1a' },
+  downloadSub: { marginTop: 8, fontSize: 14, color: '#666', textAlign: 'center' },
   scroll: { padding: 16 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f7f6f2', padding: 32 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
