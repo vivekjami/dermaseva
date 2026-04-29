@@ -6,6 +6,7 @@ export interface PromptInput {
   symptomDescription: string;
   workerType: 'asha' | 'anganwadi' | 'general';
   languageCode: string;
+  inputMode?: 'voice' | 'text';
 }
 
 export function buildPrompt(input: PromptInput): string {
@@ -14,9 +15,13 @@ export function buildPrompt(input: PromptInput): string {
     : input.workerType === 'anganwadi' ? 'Anganwadi worker'
     : 'Health worker';
 
+  const modeNote = input.inputMode === 'text'
+    ? ' (typed description — may be more detailed)'
+    : ' (spoken description — may be informal)';
+
   const symptoms = sanitiseInput(input.symptomDescription);
 
-  return `${workerLabel} reporting. Language: ${input.languageCode}.
+  return `${workerLabel} reporting${modeNote}. Language: ${input.languageCode}.
 Symptoms: ${symptoms}
 Analyze and return the JSON.`;
 }
@@ -26,5 +31,5 @@ function sanitiseInput(text: string): string {
   return text
     .replace(/[<>{}[\]\\]/g, '')
     .replace(/\n{3,}/g, '\n\n')
-    .slice(0, 400);
+    .slice(0, 800); // Increased from 400 — typed descriptions can be longer
 }

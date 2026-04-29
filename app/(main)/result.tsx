@@ -1,16 +1,17 @@
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, ActivityIndicator, Image,
+  ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as FileSystem from 'expo-file-system/legacy';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import * as Speech from 'expo-speech';
+import { getHistory, saveHistory, buildHistoryContext } from '@/modules/db/patient-history';
 
 
 // Use the library's useModel hook — the PROVEN working pattern
-import { useModel, GEMMA_4_E2B_IT, getRecommendedBackend } from 'react-native-litert-lm';
+import { useModel, GEMMA_4_E2B_IT } from 'react-native-litert-lm';
 
 import { runMockInference, MODEL_SIZE_BYTES } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
@@ -25,7 +26,6 @@ import { ReferralCTA } from '@/components/ReferralCTA';
 import { SafetyBanner } from '@/components/SafetyBanner';
 import { OtcCard } from '@/components/OtcCard';
 import { saveCase } from '@/modules/db/case-store';
-import { makeThumbnail, deleteOriginal } from '@/modules/db/thumbnail';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
 // System instructions — embedded directly in user message, NOT in useModel config.
@@ -57,10 +57,16 @@ function formatBytes(bytes: number): string {
 }
 
 export default function ResultScreen() {
-  const { imageUri, symptoms } = useLocalSearchParams<{ imageUri: string; symptoms?: string }>();
+  const { symptoms, patientId, language: voiceLang, inputMode: rawInputMode } = useLocalSearchParams<{
+    symptoms: string;
+    patientId: string;
+    language: string;
+    inputMode: string;
+  }>();
+  const inputMode = (rawInputMode === 'text' ? 'text' : 'voice') as 'voice' | 'text';
   const router = useRouter();
   const { t } = useTranslation();
-  const { workerType, language } = useAppStore();
+  const { workerType, language: appLanguage } = useAppStore();
 
   const modelConfig = useMemo(() => ({
     backend: 'cpu' as const, // Force CPU. GPU delegate is highly unstable on some Androids and causes nativeSendMessage crashes.
@@ -81,15 +87,13 @@ export default function ResultScreen() {
   const [ragNote, setRagNote] = useState('');
   const [otcOverridden, setOtcOverridden] = useState(false);
   const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [modelError, setModelError] = useState('');
   const [analysisError, setAnalysisError] = useState('');
   const hasStartedAnalysis = useRef(false);
 
   useEffect(() => {
-    if (!imageUri) { setInferenceState('error'); return; }
-    setImagePreview(imageUri);
-  }, [imageUri]);
+    if (!symptoms || !patientId) { setInferenceState('error'); return; }
+  }, [symptoms, patientId]);
 
   // When the model becomes ready, start analysis
   useEffect(() => {
@@ -120,9 +124,6 @@ export default function ResultScreen() {
     }
   }, [downloadProgress, isReady]);
 
-  // Removed aggressive image cleanup. React 18 StrictMode unmounts and remounts 
-  // immediately in dev, which was deleting the image before the model could read it!
-
   async function runAnalysis(useMock: boolean) {
     try {
       // 1. Ensure RAG index is built
@@ -135,16 +136,30 @@ export default function ResultScreen() {
 
       const ragContext = buildRagContext(ragChunks);
 
-      // 3. Build prompt
+      // 3. Retrieve Patient History
+      let historyContext = '';
+      if (patientId) {
+        const historyRecords = getHistory(patientId, 3); // Get last 3 visits
+        historyContext = buildHistoryContext(historyRecords);
+      }
+
+      // 4. Build prompt
       setInferenceState('running');
       const basePrompt = buildPrompt({
         symptomDescription: symptoms ?? 'No symptom description provided.',
         workerType: workerType ?? 'general',
-        languageCode: language ?? 'en',
+        languageCode: voiceLang ?? appLanguage ?? 'en',
+        inputMode,
       });
-      const promptToSend = ragContext
-        ? `${SYSTEM_INSTRUCTIONS}\n\nGuidelines:\n${ragContext.slice(0, 500)}\n\n---\n${basePrompt}`
-        : `${SYSTEM_INSTRUCTIONS}\n\n${basePrompt}`;
+      
+      let promptToSend = `${SYSTEM_INSTRUCTIONS}\n\n`;
+      if (historyContext) {
+        promptToSend += `Patient History (Past Visits):\n${historyContext}\n\n`;
+      }
+      if (ragContext) {
+        promptToSend += `Guidelines:\n${ragContext.slice(0, 500)}\n\n`;
+      }
+      promptToSend += `---\n${basePrompt}`;
 
       // 4. Run inference
       let USE_MOCK = useMock;
@@ -153,7 +168,7 @@ export default function ResultScreen() {
 
       if (USE_MOCK || !model) {
         setInferenceSource('mock');
-        const mockOutput = runMockInference({ imagePath: imageUri, prompt: promptToSend });
+        const mockOutput = runMockInference({ prompt: promptToSend });
         rawText = mockOutput.rawText;
         elapsed = mockOutput.inferenceTimeMs;
       } else {
@@ -170,7 +185,7 @@ export default function ResultScreen() {
           console.error('[Result] sendMessage failed, falling back to mock:', errMsg);
           setModelError(errMsg);
           setInferenceSource('mock');
-          const mockOutput = runMockInference({ imagePath: imageUri, prompt: promptToSend });
+          const mockOutput = runMockInference({ prompt: promptToSend });
           rawText = mockOutput.rawText;
           elapsed = mockOutput.inferenceTimeMs;
         }
@@ -208,11 +223,22 @@ export default function ResultScreen() {
       setResult(parsed);
       setInferenceState('done');
 
+      // Read diagnosis aloud
+      Speech.speak(
+        `${parsed.conditionName}. Severity is ${parsed.severity}. ${parsed.doctorReferral}`,
+        { language: voiceLang || 'en-US' }
+      );
+
       // 6. Save to history
       try {
-        const thumb = imageUri ? await makeThumbnail(imageUri) : null;
-        if (imageUri) await deleteOriginal(imageUri);
         const sanitisedSymptoms = sanitiseSymptomsForStorage(symptoms ?? null);
+        
+        // Save to the new Patient History DB
+        if (patientId) {
+          saveHistory(patientId, sanitisedSymptoms, JSON.stringify(parsed));
+        }
+
+        // Save to existing case store for analytics
         await saveCase({
           worker_type: workerType ?? 'general',
           condition_name: parsed.conditionName,
@@ -221,9 +247,9 @@ export default function ResultScreen() {
           otc_suggestion: parsed.otcSuggestion ?? null,
           doctor_referral: parsed.doctorReferral,
           needs_urgent_referral: parsed.needsUrgentReferral,
-          thumbnail_base64: thumb,
+          thumbnail_base64: null,
           raw_symptoms: sanitisedSymptoms,
-          language_used: language ?? 'en',
+          language_used: voiceLang ?? 'en',
           inference_source: USE_MOCK ? 'mock' : 'litert',
         });
       } catch (e) { console.warn('[History] Failed to save case:', e); }
@@ -272,7 +298,7 @@ export default function ResultScreen() {
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator size="large" color="#01696f" />
         <Text style={styles.loadingText}>
-          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing skin condition…'}
+          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing symptoms…'}
         </Text>
         <Text style={styles.loadingSubtext}>
           {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Initializing on-device AI engine'}
@@ -304,7 +330,7 @@ export default function ResultScreen() {
             </View>
           ) : null}
           <TouchableOpacity style={[styles.btn, { marginTop: 20 }]} onPress={() => router.back()}>
-            <Text style={styles.btnText}>← Retake Photo</Text>
+            <Text style={styles.btnText}>{t('result.tryAgain')}</Text>
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
@@ -320,7 +346,7 @@ export default function ResultScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: 48 }}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backBtn}>← Retake</Text>
+            <Text style={styles.backBtn}>{t('result.back')}</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Screening Result</Text>
           <View style={{ width: 60 }} />
@@ -347,12 +373,16 @@ export default function ResultScreen() {
           </View>
         )}
 
-        {/* Captured image preview */}
-        {imagePreview && (
-          <View style={styles.imagePreviewContainer}>
-            <Image source={{ uri: imagePreview }} style={styles.imagePreview} resizeMode="cover" />
+        {/* Symptoms Summary Card */}
+        {symptoms ? (
+          <View style={styles.symptomsCard}>
+            <Text style={styles.sectionLabel}>{t('result.symptomsTitle')}</Text>
+            <Text style={styles.symptomsText}>{symptoms}</Text>
+            {patientId ? (
+              <Text style={styles.patientIdText}>Patient: {patientId}</Text>
+            ) : null}
           </View>
-        )}
+        ) : null}
 
         {result.isLowConfidence && <SafetyBanner type="low_confidence" />}
         {result.severity === 'severe' && !result.isLowConfidence && <SafetyBanner type="severe" />}
@@ -400,8 +430,17 @@ export default function ResultScreen() {
           <Text style={styles.disclaimerText}>ℹ️ {t('result.disclaimer')}</Text>
         </View>
 
+        {/* Follow-up button */}
+        <TouchableOpacity
+          style={styles.followUpBtn}
+          onPress={() => router.back()}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.followUpBtnText}>{t('result.followUp')}</Text>
+        </TouchableOpacity>
+
         <Text style={styles.debugText}>
-          Inference: {inferenceMs}ms • Source: {inferenceSource}
+          Inference: {inferenceMs}ms • Source: {inferenceSource} • Input: {inputMode}
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -438,15 +477,22 @@ const styles = StyleSheet.create({
     borderLeftColor: '#da7101',
   },
   mockBannerText: { fontSize: 13, color: '#964219', lineHeight: 19 },
-  // Image preview
-  imagePreviewContainer: {
+  // Symptoms summary card
+  symptomsCard: {
+    backgroundColor: '#fff',
     borderRadius: 12,
-    overflow: 'hidden',
+    padding: 16,
     marginBottom: 12,
-    height: 180,
-    backgroundColor: '#e6e4df',
+    borderLeftWidth: 4,
+    borderLeftColor: '#01696f',
+    shadowColor: '#28251d',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  imagePreview: { width: '100%', height: '100%' },
+  symptomsText: { fontSize: 15, color: '#28251d', lineHeight: 22, marginTop: 4 },
+  patientIdText: { fontSize: 12, color: '#7a7974', marginTop: 8, fontWeight: '600' },
   // Cards
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#28251d', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   severityBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, marginBottom: 10 },
@@ -477,5 +523,16 @@ const styles = StyleSheet.create({
   otcSuppressedText: { color: '#7a7974', fontSize: 13, lineHeight: 18 },
   disclaimer: { backgroundColor: '#f3f0ec', borderRadius: 10, padding: 12, marginBottom: 8 },
   disclaimerText: { color: '#7a7974', fontSize: 13, lineHeight: 18 },
+  // Follow-up button
+  followUpBtn: {
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#01696f',
+  },
+  followUpBtnText: { color: '#01696f', fontSize: 16, fontWeight: '700' },
   debugText: { fontSize: 11, color: '#bab9b4', textAlign: 'center', marginTop: 8 },
 });

@@ -13,12 +13,31 @@
   "result.severity.mild": "తేలికపాటి",
   "result.severity.moderate": "మధ్యస్థం — త్వరలో డాక్టర్‌ని సంప్రదించండి",
   "result.severity.severe": "తీవ్రమైన — వెంటనే రిఫర్ చేయండి",
+  "result.tryAgain": "← మళ్ళీ ప్రయత్నించండి",
+  "result.back": "← వెనక్కి",
+  "result.symptomsTitle": "వివరించిన లక్షణాలు",
+  "result.followUp": "మరిన్ని లక్షణాలు చెప్పండి",
   "history.title": "కేసు చరిత్ర",
   "history.empty": "ఇంకా కేసులు నమోదు కాలేదు",
   "history": {
-    "title": "Case History",
-    "empty": "No cases recorded yet",
-    "deleted": "Case deleted",
-    "cleared": "All cases cleared"
-  }
+    "title": "కేసు చరిత్ర",
+    "empty": "ఇంకా కేసులు నమోదు కాలేదు",
+    "deleted": "కేసు తొలగించబడింది",
+    "cleared": "అన్ని కేసులు తొలగించబడ్డాయి"
+  },
+  "voice.title": "లక్షణాలు చెప్పండి",
+  "voice.patientId": "రోగి పేరు లేదా ఐడి",
+  "voice.language": "భాష",
+  "voice.transcript": "లక్షణాలు",
+  "voice.placeholder": "మైక్ నొక్కి మాట్లాడండి లేదా ఇక్కడ టైప్ చేయండి...",
+  "voice.holdToRecord": "నొక్కి పట్టుకొని మాట్లాడండి",
+  "voice.listening": "వింటోంది...",
+  "voice.analyze": "లక్షణాలు విశ్లేషించండి",
+  "voice.clear": "తుడిచివేయండి",
+  "voice.noPatientId": "దయచేసి రోగి పేరు నమోదు చేయండి",
+  "voice.noSymptoms": "దయచేసి ముందు లక్షణాలు చెప్పండి",
+  "voice.speechFailed": "వాక్ గుర్తింపు విఫలమైంది",
+  "voice.startFailed": "వినడం ప్రారంభించలేకపోయింది",
+  "voice.inputMode.voice": "మాట",
+  "voice.inputMode.text": "టైప్"
 }

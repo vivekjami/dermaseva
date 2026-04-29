@@ -13,12 +13,31 @@
   "result.severity.mild": "हल्का",
   "result.severity.moderate": "मध्यम — जल्द डॉक्टर से मिलें",
   "result.severity.severe": "गंभीर — तुरंत रेफर करें",
+  "result.tryAgain": "← फिर से कोशिश करें",
+  "result.back": "← वापस",
+  "result.symptomsTitle": "वर्णित लक्षण",
+  "result.followUp": "और लक्षण बताएं",
   "history.title": "केस इतिहास",
   "history.empty": "अभी तक कोई केस दर्ज नहीं",
   "history": {
-    "title": "Case History",
-    "empty": "No cases recorded yet",
-    "deleted": "Case deleted",
-    "cleared": "All cases cleared"
-  }
+    "title": "केस इतिहास",
+    "empty": "अभी तक कोई केस दर्ज नहीं",
+    "deleted": "केस हटा दिया गया",
+    "cleared": "सभी केस साफ़ कर दिए गए"
+  },
+  "voice.title": "लक्षण बताएं",
+  "voice.patientId": "मरीज़ का नाम या आईडी",
+  "voice.language": "भाषा",
+  "voice.transcript": "लक्षण",
+  "voice.placeholder": "माइक दबाकर बोलें या यहाँ टाइप करें...",
+  "voice.holdToRecord": "दबाकर बोलें",
+  "voice.listening": "सुन रहे हैं...",
+  "voice.analyze": "लक्षण जाँचें",
+  "voice.clear": "मिटाएं",
+  "voice.noPatientId": "कृपया मरीज़ का नाम दर्ज करें",
+  "voice.noSymptoms": "कृपया पहले लक्षण बताएं",
+  "voice.speechFailed": "वाक् पहचान विफल",
+  "voice.startFailed": "सुनना शुरू नहीं हो सका",
+  "voice.inputMode.voice": "आवाज़",
+  "voice.inputMode.text": "टाइप"
 }

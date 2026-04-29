@@ -13,6 +13,10 @@
   "result.severity.mild": "Mild",
   "result.severity.moderate": "Moderate — consult a doctor soon",
   "result.severity.severe": "Severe — refer immediately",
+  "result.tryAgain": "← Try Again",
+  "result.back": "← Back",
+  "result.symptomsTitle": "Symptoms Described",
+  "result.followUp": "Describe More Symptoms",
   "history.title": "Case History",
   "history.empty": "No cases recorded yet",
   "history": {
@@ -20,5 +24,20 @@
     "empty": "No cases recorded yet",
     "deleted": "Case deleted",
     "cleared": "All cases cleared"
-  }
+  },
+  "voice.title": "Describe Symptoms",
+  "voice.patientId": "Patient ID or Name",
+  "voice.language": "Language",
+  "voice.transcript": "Symptoms",
+  "voice.placeholder": "Tap mic to speak or type here...",
+  "voice.holdToRecord": "Hold to Record",
+  "voice.listening": "Listening...",
+  "voice.analyze": "Analyze Symptoms",
+  "voice.clear": "Clear",
+  "voice.noPatientId": "Please enter a Patient ID",
+  "voice.noSymptoms": "Please describe symptoms first",
+  "voice.speechFailed": "Speech recognition failed",
+  "voice.startFailed": "Failed to start listening",
+  "voice.inputMode.voice": "Voice",
+  "voice.inputMode.text": "Type"
 }

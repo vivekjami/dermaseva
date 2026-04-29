@@ -2,12 +2,14 @@ import { Redirect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import { initHistoryDB } from '@/modules/db/patient-history';
 
 export default function Index() {
   const [ready, setReady] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
 
   useEffect(() => {
+    initHistoryDB(); // Initialize local storage for patient history
     SecureStore.getItemAsync('ONBOARDING_COMPLETE').then((val) => {
       setOnboarded(val === 'true');
       setReady(true);
@@ -23,6 +25,6 @@ export default function Index() {
   }
 
   return onboarded
-    ? <Redirect href="/(main)/camera" />
+    ? <Redirect href="/(main)/voice" />
     : <Redirect href="/(onboarding)/language" />;
 }

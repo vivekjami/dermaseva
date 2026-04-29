@@ -21,7 +21,7 @@ export default function WorkerTypeScreen() {
 
   const handleFinish = async () => {
     await SecureStore.setItemAsync('ONBOARDING_COMPLETE', 'true');
-    router.replace('/(main)/camera');
+    router.replace('/(main)/voice');
   };
 
   return (

@@ -25,7 +25,6 @@ Rules: Always include doctorReferral. Only suggest OTC for fungal infections, sc
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface InferenceInput {
-  imagePath: string;
   prompt: string;
 }
 
@@ -179,8 +178,9 @@ interface MockEntry {
 }
 
 const MOCK_CONDITIONS: MockEntry[] = [
+  // ── OTC-eligible conditions ─────────────────────────────────────────────
   {
-    keywords: ['ring', 'circular', 'round', 'fungal', 'itching'],
+    keywords: ['ring', 'circular', 'round', 'fungal', 'itching', 'tinea'],
     condition: 'Ringworm (Tinea corporis)',
     confidence: 0.87,
     severity: 'mild',
@@ -188,7 +188,15 @@ const MOCK_CONDITIONS: MockEntry[] = [
     otc: 'Apply Clotrimazole 1% cream twice daily for 2–4 weeks.',
   },
   {
-    keywords: ['scab', 'itch', 'burrow', 'night', 'family'],
+    keywords: ['white', 'patch', 'discolor', 'light', 'sun', 'versicolor'],
+    condition: 'Tinea Versicolor (Pityriasis versicolor)',
+    confidence: 0.79,
+    severity: 'mild',
+    keySigns: ['Hypopigmented or hyperpigmented patches', 'Fine scaling', 'More visible after sun exposure'],
+    otc: 'Apply Ketoconazole 2% shampoo topically for 5–10 minutes daily for 2 weeks.',
+  },
+  {
+    keywords: ['scab', 'itch', 'burrow', 'night', 'family', 'scabies'],
     condition: 'Scabies',
     confidence: 0.81,
     severity: 'moderate',
@@ -196,12 +204,53 @@ const MOCK_CONDITIONS: MockEntry[] = [
     otc: null,
   },
   {
-    keywords: ['rash', 'red', 'contact', 'chemical', 'irritation'],
+    keywords: ['rash', 'contact', 'chemical', 'irritation', 'soap', 'detergent'],
     condition: 'Contact Dermatitis',
     confidence: 0.74,
     severity: 'mild',
     keySigns: ['Erythematous patches', 'Localized to contact area', 'Itching/burning'],
     otc: 'Apply Calamine lotion, avoid the irritant. OTC hydrocortisone 1% if needed.',
+  },
+  {
+    keywords: ['heat', 'prickly', 'sweat', 'bump', 'summer', 'miliaria'],
+    condition: 'Heat Rash (Miliaria)',
+    confidence: 0.83,
+    severity: 'mild',
+    keySigns: ['Small red bumps in folds/covered areas', 'Worse in hot weather', 'Prickling sensation'],
+    otc: 'Keep area clean and dry. Use talc-free powder. Wear loose cotton clothing.',
+  },
+  {
+    keywords: ['dry', 'crack', 'eczema', 'flaky', 'rough', 'atopic'],
+    condition: 'Mild Eczema (Atopic Dermatitis)',
+    confidence: 0.72,
+    severity: 'mild',
+    keySigns: ['Dry, cracked skin', 'Itching', 'Inflamed patches, often on elbows/knees'],
+    otc: 'Apply fragrance-free moisturizing cream twice daily. Avoid harsh soaps.',
+  },
+  // ── Referral-only conditions (no OTC) ───────────────────────────────────
+  {
+    keywords: ['numb', 'pale', 'nerve', 'leprosy', 'loss of sensation', 'thickened'],
+    condition: 'Leprosy (Hansen\'s disease)',
+    confidence: 0.65,
+    severity: 'severe',
+    keySigns: ['Hypopigmented patch with loss of sensation', 'Thickened peripheral nerves', 'Numbness in extremities'],
+    otc: null,
+  },
+  {
+    keywords: ['warm', 'swollen', 'spreading', 'red', 'fever', 'cellulitis', 'painful'],
+    condition: 'Cellulitis',
+    confidence: 0.70,
+    severity: 'severe',
+    keySigns: ['Rapidly spreading redness', 'Warm and tender skin', 'Possible fever/chills'],
+    otc: null,
+  },
+  {
+    keywords: ['silver', 'scale', 'plaque', 'psoriasis', 'joint', 'thick', 'elbow', 'knee'],
+    condition: 'Psoriasis',
+    confidence: 0.68,
+    severity: 'moderate',
+    keySigns: ['Thick silvery scales over red plaques', 'Commonly on elbows, knees, scalp', 'Possible joint pain'],
+    otc: null,
   },
 ];
 
