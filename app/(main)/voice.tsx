@@ -106,7 +106,11 @@ export default function VoiceScreen() {
     };
 
     return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
+      // Do NOT call Voice.destroy() here — it nullifies the native module
+      // and causes 'startSpeech of null' on re-mount / hot-reload.
+      // Just stop listening and remove JS listeners.
+      Voice.stop().catch(() => {});
+      Voice.removeAllListeners();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -209,15 +213,21 @@ export default function VoiceScreen() {
       return;
     }
 
-    // 3. Cancel any previous session (do NOT use Voice.destroy() — it
-    //    nullifies the native SpeechRecognizer module, causing
-    //    "cannot read property 'startSpeech' of null" on next start).
+    // 3. Try to cancel any previous session, then start fresh.
+    //    Wrap cancel in its own try-catch — if the native module was
+    //    destroyed (e.g. by a previous crash), cancel will throw but
+    //    we can still attempt start() which recreates the recognizer.
     isProcessing.current = true;
     try {
-      // Cancel clears any pending recognition without destroying the module
       await Voice.cancel();
-      // Small delay to let the native engine fully release the mic
-      await new Promise((r) => setTimeout(r, 300));
+    } catch (_) {
+      // Module may be null from a prior destroy — that's OK
+    }
+
+    // Small delay to let the native engine release the mic
+    await new Promise((r) => setTimeout(r, 300));
+
+    try {
       await Voice.start(selectedLanguage);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
