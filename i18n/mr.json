@@ -43,5 +43,8 @@
   "voice.greeting": "मी तुम्हाला कशी मदत करू शकतो?",
   "voice.profession": "तुमची भूमिका",
   "voice.permissionDenied": "व्हॉइस इनपुटसाठी मायक्रोफोनची परवानगी आवश्यक आहे",
-  "voice.permissionBtn": "परवानगी द्या"
+  "voice.permissionBtn": "परवानगी द्या",
+  "voice.tapToSpeak": "बोलण्यासाठी टॅप करा",
+  "voice.tapToStop": "थांबवण्यासाठी टॅप करा",
+  "voice.notAvailable": "या डिव्हाइसवर वाक् ओळख उपलब्ध नाही"
 }

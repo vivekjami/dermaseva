@@ -43,5 +43,8 @@
   "voice.greeting": "How can I help you today?",
   "voice.profession": "Your Role",
   "voice.permissionDenied": "Microphone permission is required for voice input",
-  "voice.permissionBtn": "Grant Permission"
+  "voice.permissionBtn": "Grant Permission",
+  "voice.tapToSpeak": "Tap to Speak",
+  "voice.tapToStop": "Tap to Stop",
+  "voice.notAvailable": "Speech recognition is not available on this device"
 }

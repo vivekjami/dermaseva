@@ -39,31 +39,42 @@ export default function VoiceScreen() {
   const [inputMode, setInputMode] = useState<InputMode>('voice');
   const [isListening, setIsListening] = useState(false);
   const [transcription, setTranscription] = useState('');
-  const [patientId, setPatientId] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState(
     VOICE_LANGUAGES.find((l) => l.appCode === appLanguage)?.code ?? 'en-US'
   );
   const [error, setError] = useState('');
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
-  const [showSetup, setShowSetup] = useState(!workerType); // Expand setup if no worker type set
+  const [showSetup, setShowSetup] = useState(!workerType);
+  const [voiceAvailable, setVoiceAvailable] = useState(true);
 
-  // Pulse animation for mic button
+  // Refs to prevent race conditions with Voice
+  const isProcessing = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Init DB on mount
-  useEffect(() => {
-    initHistoryDB();
-  }, []);
+  useEffect(() => { initHistoryDB(); }, []);
 
-  // Check mic permission on mount
+  // Check mic permission + voice availability on mount
   useEffect(() => {
     checkMicPermission();
+    Voice.isAvailable().then((available) => {
+      setVoiceAvailable(!!available);
+      if (!available) {
+        console.warn('[Voice] Speech recognition not available on this device');
+      }
+    });
   }, []);
 
   // Voice listeners
   useEffect(() => {
-    Voice.onSpeechStart = () => setIsListening(true);
-    Voice.onSpeechEnd = () => setIsListening(false);
+    Voice.onSpeechStart = () => {
+      isProcessing.current = false;
+      setIsListening(true);
+    };
+    Voice.onSpeechEnd = () => {
+      isProcessing.current = false;
+      setIsListening(false);
+    };
     Voice.onSpeechResults = (e: SpeechResultsEvent) => {
       if (e.value && e.value.length > 0) {
         setTranscription((prev) => {
@@ -74,7 +85,20 @@ export default function VoiceScreen() {
       }
     };
     Voice.onSpeechError = (e: SpeechErrorEvent) => {
-      setError(e.error?.message || t('voice.speechFailed'));
+      isProcessing.current = false;
+      const code = e.error?.code;
+      const msg = e.error?.message || '';
+
+      // Error code 7 = "No match" — not a real error, just silence
+      // Error code 6 = "Speech not available"
+      if (code === '7' || code === '5') {
+        // No speech detected — just stop quietly
+        setIsListening(false);
+        return;
+      }
+
+      console.error('[Voice] Error:', code, msg);
+      setError(msg || t('voice.speechFailed'));
       setIsListening(false);
     };
 
@@ -144,12 +168,30 @@ export default function VoiceScreen() {
     i18n.changeLanguage(appCode);
   };
 
-  // ─── Voice ────────────────────────────────────────────────────────────────
-  const startListening = async () => {
+  // ─── Voice — TAP TO TOGGLE (not hold-to-record) ──────────────────────────
+  // Using toggle pattern instead of onPressIn/onPressOut to avoid race
+  // conditions where Voice.stop() fires before Voice.start() finishes.
+  const toggleListening = async () => {
+    // Prevent double-taps while the native bridge is processing
+    if (isProcessing.current) return;
+
     setError('');
     Keyboard.dismiss();
 
-    // Request mic permission if not granted
+    if (isListening) {
+      // Currently listening → stop
+      isProcessing.current = true;
+      try {
+        await Voice.stop();
+      } catch (e) {
+        console.error('[Voice] stop error:', e);
+        isProcessing.current = false;
+      }
+      return;
+    }
+
+    // Not listening → start
+    // 1. Check permission
     if (micPermission !== 'granted') {
       const granted = await requestMicPermission();
       if (!granted) {
@@ -158,19 +200,25 @@ export default function VoiceScreen() {
       }
     }
 
-    try {
-      await Voice.start(selectedLanguage);
-    } catch (e) {
-      console.error('[Voice] start error:', e);
-      setError(t('voice.startFailed'));
+    // 2. Check availability
+    if (!voiceAvailable) {
+      setError(t('voice.notAvailable'));
+      return;
     }
-  };
 
-  const stopListening = async () => {
+    // 3. Destroy and recreate to clear any stale state
+    isProcessing.current = true;
     try {
-      await Voice.stop();
-    } catch (e) {
-      console.error(e);
+      await Voice.destroy();
+      // Small delay to let the native engine fully release
+      await new Promise((r) => setTimeout(r, 200));
+      await Voice.start(selectedLanguage);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[Voice] start error:', msg);
+      setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
+      isProcessing.current = false;
+      setIsListening(false);
     }
   };
 
@@ -180,10 +228,6 @@ export default function VoiceScreen() {
   };
 
   const submitToAI = () => {
-    if (!patientId.trim()) {
-      setError(t('voice.noPatientId'));
-      return;
-    }
     if (!transcription.trim()) {
       setError(t('voice.noSymptoms'));
       return;
@@ -192,7 +236,6 @@ export default function VoiceScreen() {
       pathname: '/(main)/result' as Href,
       params: {
         symptoms: transcription.slice(0, MAX_CHARS),
-        patientId: patientId.trim(),
         language: selectedLanguage,
         inputMode,
       },
@@ -276,18 +319,6 @@ export default function VoiceScreen() {
           </View>
         )}
 
-        {/* Patient ID */}
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>{t('voice.patientId')}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Patient 101"
-            placeholderTextColor="#b0aeaa"
-            value={patientId}
-            onChangeText={setPatientId}
-          />
-        </View>
-
         {/* Input Mode Toggle */}
         <View style={styles.modeToggleContainer}>
           <TouchableOpacity
@@ -315,6 +346,13 @@ export default function VoiceScreen() {
             <TouchableOpacity onPress={requestMicPermission} style={styles.permBtn}>
               <Text style={styles.permBtnText}>{t('voice.permissionBtn')}</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Voice not available banner */}
+        {!voiceAvailable && inputMode === 'voice' && (
+          <View style={styles.permBanner}>
+            <Text style={styles.permBannerText}>⚠️ {t('voice.notAvailable')}</Text>
           </View>
         )}
 
@@ -356,13 +394,12 @@ export default function VoiceScreen() {
           <Animated.View style={[styles.micContainer, { transform: [{ scale: pulseAnim }] }]}>
             <TouchableOpacity
               style={[styles.recordButton, isListening && styles.recordingButton]}
-              onPressIn={startListening}
-              onPressOut={stopListening}
+              onPress={toggleListening}
               activeOpacity={0.7}
             >
-              <Text style={styles.micIcon}>{isListening ? '🔴' : '🎙️'}</Text>
+              <Text style={styles.micIcon}>{isListening ? '⏹️' : '🎙️'}</Text>
               <Text style={styles.recordButtonText}>
-                {isListening ? t('voice.listening') : t('voice.holdToRecord')}
+                {isListening ? t('voice.tapToStop') : t('voice.tapToSpeak')}
               </Text>
             </TouchableOpacity>
           </Animated.View>
@@ -371,10 +408,10 @@ export default function VoiceScreen() {
         <TouchableOpacity
           style={[
             styles.submitButton,
-            (!transcription.trim() || !patientId.trim() || isOverLimit) && styles.submitButtonDisabled,
+            (!transcription.trim() || isOverLimit) && styles.submitButtonDisabled,
           ]}
           onPress={submitToAI}
-          disabled={!transcription.trim() || !patientId.trim() || isOverLimit}
+          disabled={!transcription.trim() || isOverLimit}
           activeOpacity={0.8}
         >
           <Text style={styles.submitButtonText}>{t('voice.analyze')}</Text>
@@ -497,13 +534,13 @@ const styles = StyleSheet.create({
   },
   micContainer: { alignItems: 'center' },
   recordButton: {
-    backgroundColor: '#e74c3c', paddingVertical: 16, paddingHorizontal: 32,
+    backgroundColor: '#01696f', paddingVertical: 16, paddingHorizontal: 32,
     borderRadius: 50, alignItems: 'center', flexDirection: 'row', gap: 10,
     width: '100%', justifyContent: 'center',
-    shadowColor: '#e74c3c', shadowOffset: { width: 0, height: 4 },
+    shadowColor: '#01696f', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
-  recordingButton: { backgroundColor: '#c0392b' },
+  recordingButton: { backgroundColor: '#e74c3c', shadowColor: '#e74c3c' },
   micIcon: { fontSize: 22 },
   recordButtonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
   submitButton: {

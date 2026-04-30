@@ -57,9 +57,8 @@ function formatBytes(bytes: number): string {
 }
 
 export default function ResultScreen() {
-  const { symptoms, patientId, language: voiceLang, inputMode: rawInputMode } = useLocalSearchParams<{
+  const { symptoms, language: voiceLang, inputMode: rawInputMode } = useLocalSearchParams<{
     symptoms: string;
-    patientId: string;
     language: string;
     inputMode: string;
   }>();
@@ -98,8 +97,8 @@ export default function ResultScreen() {
   const hasStartedAnalysis = useRef(false);
 
   useEffect(() => {
-    if (!symptoms || !patientId) { setInferenceState('error'); return; }
-  }, [symptoms, patientId]);
+    if (!symptoms) { setInferenceState('error'); return; }
+  }, [symptoms]);
 
   // When the model becomes ready, start analysis
   useEffect(() => {
@@ -253,10 +252,9 @@ export default function ResultScreen() {
       try {
         const sanitisedSymptoms = sanitiseSymptomsForStorage(symptoms ?? null);
         
-        // Save to the new Patient History DB
-        if (patientId) {
-          saveHistory(patientId, sanitisedSymptoms ?? '', JSON.stringify(parsed));
-        }
+        // Save to Patient History DB with a generated case ID
+        const caseId = `case-${Date.now()}`;
+        saveHistory(caseId, sanitisedSymptoms ?? '', JSON.stringify(parsed));
 
         // Save to existing case store for analytics
         await saveCase({
@@ -398,9 +396,6 @@ export default function ResultScreen() {
           <View style={styles.symptomsCard}>
             <Text style={styles.sectionLabel}>{t('result.symptomsTitle')}</Text>
             <Text style={styles.symptomsText}>{symptoms}</Text>
-            {patientId ? (
-              <Text style={styles.patientIdText}>Patient: {patientId}</Text>
-            ) : null}
           </View>
         ) : null}
 

@@ -43,5 +43,8 @@
   "voice.greeting": "నేను మీకు ఎలా సహాయం చేయగలను?",
   "voice.profession": "మీ పాత్ర",
   "voice.permissionDenied": "వాయిస్ ఇన్‌పుట్ కోసం మైక్రోఫోన్ అనుమతి అవసరం",
-  "voice.permissionBtn": "అనుమతి ఇవ్వండి"
+  "voice.permissionBtn": "అనుమతి ఇవ్వండి",
+  "voice.tapToSpeak": "మాట్లాడటానికి నొక్కండి",
+  "voice.tapToStop": "ఆపడానికి నొక్కండి",
+  "voice.notAvailable": "ఈ పరికరంలో వాక్ గుర్తింపు అందుబాటులో లేదు"
 }

@@ -43,5 +43,8 @@
   "voice.greeting": "நான் உங்களுக்கு எப்படி உதவ முடியும்?",
   "voice.profession": "உங்கள் பணி",
   "voice.permissionDenied": "குரல் உள்ளீட்டிற்கு மைக்ரோஃபோன் அனுமதி தேவை",
-  "voice.permissionBtn": "அனுமதி வழங்கு"
+  "voice.permissionBtn": "அனுமதி வழங்கு",
+  "voice.tapToSpeak": "பேச தட்டவும்",
+  "voice.tapToStop": "நிறுத்த தட்டவும்",
+  "voice.notAvailable": "இந்த சாதனத்தில் பேச்சு அடையாளம் இல்லை"
 }

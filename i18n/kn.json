@@ -43,5 +43,8 @@
   "voice.greeting": "ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?",
   "voice.profession": "ನಿಮ್ಮ ಪಾತ್ರ",
   "voice.permissionDenied": "ಧ್ವನಿ ಇನ್‌ಪುಟ್‌ಗೆ ಮೈಕ್ರೋಫೋನ್ ಅನುಮತಿ ಅಗತ್ಯ",
-  "voice.permissionBtn": "ಅನುಮತಿ ನೀಡಿ"
+  "voice.permissionBtn": "ಅನುಮತಿ ನೀಡಿ",
+  "voice.tapToSpeak": "ಮಾತನಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ",
+  "voice.tapToStop": "ನಿಲ್ಲಿಸಲು ಟ್ಯಾಪ್ ಮಾಡಿ",
+  "voice.notAvailable": "ಈ ಸಾಧನದಲ್ಲಿ ಧ್ವನಿ ಗುರುತಿಸುವಿಕೆ ಲಭ್ಯವಿಲ್ಲ"
 }
