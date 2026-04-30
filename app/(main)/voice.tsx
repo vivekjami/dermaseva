@@ -54,6 +54,28 @@ export default function VoiceScreen() {
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
 
+  // Check if on-device speech model is available, trigger download if not
+  useEffect(() => {
+    async function checkOfflineModel() {
+      try {
+        const onDeviceAvailable = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
+        if (onDeviceAvailable) {
+          // Trigger offline model download for the selected language
+          // This opens a system dialog — user can dismiss if already installed
+          ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
+            locale: selectedLanguage,
+          }).catch(() => {
+            // User dismissed or already installed — that's fine
+          });
+        }
+      } catch {
+        // supportsOnDeviceRecognition not available — skip
+      }
+    }
+    checkOfflineModel();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ─── expo-speech-recognition event hooks ──────────────────────────────────
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
@@ -130,18 +152,41 @@ export default function VoiceScreen() {
         return;
       }
 
-      // Start speech recognition
+      // Start speech recognition — prefer on-device for offline use
       ExpoSpeechRecognitionModule.start({
         lang: selectedLanguage,
-        interimResults: false, // Only emit final results to avoid duplicates
+        interimResults: false,
         maxAlternatives: 1,
         continuous: false,
         addsPunctuation: true,
+        // Use on-device recognition for fully offline operation.
+        // Falls back to cloud if on-device model isn't installed.
+        requiresOnDeviceRecognition: true,
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Voice] start error:', msg);
-      setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
+
+      // If on-device recognition failed, retry without it (cloud fallback)
+      if (msg.includes('on-device') || msg.includes('not available')) {
+        console.warn('[Voice] On-device not available, trying cloud recognition');
+        try {
+          ExpoSpeechRecognitionModule.start({
+            lang: selectedLanguage,
+            interimResults: false,
+            maxAlternatives: 1,
+            continuous: false,
+            addsPunctuation: true,
+            requiresOnDeviceRecognition: false,
+          });
+          return;
+        } catch (fallbackErr) {
+          const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+          setError(t('voice.startFailed') + `: ${fbMsg}`);
+        }
+      } else {
+        setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
+      }
       setIsListening(false);
     }
   };

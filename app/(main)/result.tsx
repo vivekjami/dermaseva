@@ -155,11 +155,14 @@ export default function ResultScreen() {
 
       const ragContext = buildRagContext(ragChunks);
 
-      // 3. Retrieve Patient History
+      // 3. Retrieve recent case history for context
       let historyContext = '';
-      if (patientId) {
-        const historyRecords = getHistory(patientId, 3); // Get last 3 visits
+      try {
+        const caseId = `case-${Date.now()}`;
+        const historyRecords = getHistory(caseId, 3);
         historyContext = buildHistoryContext(historyRecords);
+      } catch {
+        // No history yet — that's fine
       }
 
       // 4. Build prompt
