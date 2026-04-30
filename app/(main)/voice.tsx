@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Animated, Keyboard, Platform, PermissionsAndroid,
+  ScrollView, Animated, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/store/app-store';
@@ -43,77 +46,47 @@ export default function VoiceScreen() {
     VOICE_LANGUAGES.find((l) => l.appCode === appLanguage)?.code ?? 'en-US'
   );
   const [error, setError] = useState('');
-  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
   const [showSetup, setShowSetup] = useState(!workerType);
-  const [voiceAvailable, setVoiceAvailable] = useState(true);
 
-  // Refs to prevent race conditions with Voice
-  const isProcessing = useRef(false);
+  // Pulse animation for mic button
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
 
-  // Check mic permission + voice availability on mount
-  useEffect(() => {
-    checkMicPermission();
-    Voice.isAvailable().then((available) => {
-      setVoiceAvailable(!!available);
-      if (!available) {
-        console.warn('[Voice] Speech recognition not available on this device');
-      }
-    }).catch((err) => {
-      console.warn('[Voice] isAvailable check failed:', err);
-      setVoiceAvailable(true); // Assume available — will fail gracefully on start
-    });
-  }, []);
+  // ─── expo-speech-recognition event hooks ──────────────────────────────────
+  useSpeechRecognitionEvent('start', () => {
+    setIsListening(true);
+    setError('');
+  });
 
-  // Voice listeners
-  useEffect(() => {
-    Voice.onSpeechStart = () => {
-      isProcessing.current = false;
-      setIsListening(true);
-    };
-    Voice.onSpeechEnd = () => {
-      isProcessing.current = false;
-      setIsListening(false);
-    };
-    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
-      if (e.value && e.value.length > 0) {
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    if (event.results && event.results.length > 0) {
+      const latestTranscript = event.results[0]?.transcript ?? '';
+      if (event.isFinal) {
+        // Final result — append to existing transcription
         setTranscription((prev) => {
-          const newText = e.value![0];
-          if (!prev.trim()) return newText;
-          return `${prev} ${newText}`;
+          if (!prev.trim()) return latestTranscript;
+          return `${prev} ${latestTranscript}`;
         });
       }
-    };
-    Voice.onSpeechError = (e: SpeechErrorEvent) => {
-      isProcessing.current = false;
-      const code = e.error?.code;
-      const msg = e.error?.message || '';
+    }
+  });
 
-      // Error code 7 = "No match" — not a real error, just silence
-      // Error code 6 = "Speech not available"
-      if (code === '7' || code === '5') {
-        // No speech detected — just stop quietly
-        setIsListening(false);
-        return;
-      }
-
-      console.error('[Voice] Error:', code, msg);
-      setError(msg || t('voice.speechFailed'));
+  useSpeechRecognitionEvent('error', (event) => {
+    console.error('[Voice] Error:', event.error, event.message);
+    // Don't show "no-speech" as an error — user just didn't say anything
+    if (event.error === 'no-speech') {
       setIsListening(false);
-    };
-
-    return () => {
-      // Do NOT call Voice.destroy() here — it nullifies the native module
-      // and causes 'startSpeech of null' on re-mount / hot-reload.
-      // Just stop listening and remove JS listeners.
-      Voice.stop().catch(() => {});
-      Voice.removeAllListeners();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      return;
+    }
+    setError(event.message || t('voice.speechFailed'));
+    setIsListening(false);
+  });
 
   // Pulse animation when listening
   useEffect(() => {
@@ -131,43 +104,6 @@ export default function VoiceScreen() {
     }
   }, [isListening, pulseAnim]);
 
-  // ─── Permissions ──────────────────────────────────────────────────────────
-  const checkMicPermission = async () => {
-    if (Platform.OS !== 'android') {
-      setMicPermission('granted');
-      return;
-    }
-    try {
-      const granted = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-      );
-      setMicPermission(granted ? 'granted' : 'undetermined');
-    } catch {
-      setMicPermission('undetermined');
-    }
-  };
-
-  const requestMicPermission = useCallback(async (): Promise<boolean> => {
-    if (Platform.OS !== 'android') return true;
-    try {
-      const result = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        {
-          title: 'DermaSeva Microphone Access',
-          message: 'DermaSeva needs microphone access to listen to symptom descriptions.',
-          buttonPositive: 'Allow',
-          buttonNegative: 'Deny',
-        }
-      );
-      const granted = result === PermissionsAndroid.RESULTS.GRANTED;
-      setMicPermission(granted ? 'granted' : 'denied');
-      return granted;
-    } catch {
-      setMicPermission('denied');
-      return false;
-    }
-  }, []);
-
   // ─── Language change ──────────────────────────────────────────────────────
   const handleLanguageChange = (langCode: string, appCode: string) => {
     setSelectedLanguage(langCode);
@@ -175,65 +111,37 @@ export default function VoiceScreen() {
     i18n.changeLanguage(appCode);
   };
 
-  // ─── Voice — TAP TO TOGGLE (not hold-to-record) ──────────────────────────
-  // Using toggle pattern instead of onPressIn/onPressOut to avoid race
-  // conditions where Voice.stop() fires before Voice.start() finishes.
+  // ─── Voice — TAP TO TOGGLE ────────────────────────────────────────────────
   const toggleListening = async () => {
-    // Prevent double-taps while the native bridge is processing
-    if (isProcessing.current) return;
-
     setError('');
     Keyboard.dismiss();
 
     if (isListening) {
       // Currently listening → stop
-      isProcessing.current = true;
-      try {
-        await Voice.stop();
-      } catch (e) {
-        console.error('[Voice] stop error:', e);
-        isProcessing.current = false;
-      }
+      ExpoSpeechRecognitionModule.stop();
       return;
     }
 
-    // Not listening → start
-    // 1. Check permission
-    if (micPermission !== 'granted') {
-      const granted = await requestMicPermission();
-      if (!granted) {
+    // Not listening → request permissions and start
+    try {
+      const permResult = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permResult.granted) {
         setError(t('voice.permissionDenied'));
         return;
       }
-    }
 
-    // 2. Check availability
-    if (!voiceAvailable) {
-      setError(t('voice.notAvailable'));
-      return;
-    }
-
-    // 3. Try to cancel any previous session, then start fresh.
-    //    Wrap cancel in its own try-catch — if the native module was
-    //    destroyed (e.g. by a previous crash), cancel will throw but
-    //    we can still attempt start() which recreates the recognizer.
-    isProcessing.current = true;
-    try {
-      await Voice.cancel();
-    } catch (_) {
-      // Module may be null from a prior destroy — that's OK
-    }
-
-    // Small delay to let the native engine release the mic
-    await new Promise((r) => setTimeout(r, 300));
-
-    try {
-      await Voice.start(selectedLanguage);
+      // Start speech recognition
+      ExpoSpeechRecognitionModule.start({
+        lang: selectedLanguage,
+        interimResults: false, // Only emit final results to avoid duplicates
+        maxAlternatives: 1,
+        continuous: false,
+        addsPunctuation: true,
+      });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Voice] start error:', msg);
       setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
-      isProcessing.current = false;
       setIsListening(false);
     }
   };
@@ -354,23 +262,6 @@ export default function VoiceScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Permission denied banner */}
-        {micPermission === 'denied' && inputMode === 'voice' && (
-          <View style={styles.permBanner}>
-            <Text style={styles.permBannerText}>🎙️ {t('voice.permissionDenied')}</Text>
-            <TouchableOpacity onPress={requestMicPermission} style={styles.permBtn}>
-              <Text style={styles.permBtnText}>{t('voice.permissionBtn')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Voice not available banner */}
-        {!voiceAvailable && inputMode === 'voice' && (
-          <View style={styles.permBanner}>
-            <Text style={styles.permBannerText}>⚠️ {t('voice.notAvailable')}</Text>
-          </View>
-        )}
 
         {/* Symptoms Transcript — Editable */}
         <View style={styles.transcriptionContainer}>
@@ -513,19 +404,6 @@ const styles = StyleSheet.create({
   modeToggleActive: { backgroundColor: '#fff', shadowColor: '#28251d', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 },
   modeToggleText: { fontSize: 15, color: '#7a7974', fontWeight: '600' },
   modeToggleTextActive: { color: '#01696f', fontWeight: '700' },
-
-  // Permission banner
-  permBanner: {
-    backgroundColor: '#fef3cd', borderRadius: 12, padding: 14,
-    marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#da7101',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  permBannerText: { fontSize: 13, color: '#964219', flex: 1, lineHeight: 18 },
-  permBtn: {
-    backgroundColor: '#01696f', paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 8, marginLeft: 10,
-  },
-  permBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
   // Transcript
   transcriptionContainer: { flex: 1, marginBottom: 8 },
