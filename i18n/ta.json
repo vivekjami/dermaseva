@@ -39,5 +39,9 @@
   "voice.speechFailed": "பேச்சு அடையாளம் தோல்வி",
   "voice.startFailed": "கேட்கத் தொடங்க முடியவில்லை",
   "voice.inputMode.voice": "குரல்",
-  "voice.inputMode.text": "தட்டச்சு"
+  "voice.inputMode.text": "தட்டச்சு",
+  "voice.greeting": "நான் உங்களுக்கு எப்படி உதவ முடியும்?",
+  "voice.profession": "உங்கள் பணி",
+  "voice.permissionDenied": "குரல் உள்ளீட்டிற்கு மைக்ரோஃபோன் அனுமதி தேவை",
+  "voice.permissionBtn": "அனுமதி வழங்கு"
 }

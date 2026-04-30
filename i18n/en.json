@@ -39,5 +39,9 @@
   "voice.speechFailed": "Speech recognition failed",
   "voice.startFailed": "Failed to start listening",
   "voice.inputMode.voice": "Voice",
-  "voice.inputMode.text": "Type"
+  "voice.inputMode.text": "Type",
+  "voice.greeting": "How can I help you today?",
+  "voice.profession": "Your Role",
+  "voice.permissionDenied": "Microphone permission is required for voice input",
+  "voice.permissionBtn": "Grant Permission"
 }

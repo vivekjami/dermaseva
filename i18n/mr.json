@@ -39,5 +39,9 @@
   "voice.speechFailed": "वाक् ओळख अयशस्वी",
   "voice.startFailed": "ऐकणे सुरू करता आले नाही",
   "voice.inputMode.voice": "आवाज",
-  "voice.inputMode.text": "टाइप"
+  "voice.inputMode.text": "टाइप",
+  "voice.greeting": "मी तुम्हाला कशी मदत करू शकतो?",
+  "voice.profession": "तुमची भूमिका",
+  "voice.permissionDenied": "व्हॉइस इनपुटसाठी मायक्रोफोनची परवानगी आवश्यक आहे",
+  "voice.permissionBtn": "परवानगी द्या"
 }

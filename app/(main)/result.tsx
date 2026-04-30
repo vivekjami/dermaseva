@@ -71,6 +71,12 @@ export default function ResultScreen() {
   const modelConfig = useMemo(() => ({
     backend: 'cpu' as const, // Force CPU. GPU delegate is highly unstable on some Androids and causes nativeSendMessage crashes.
     autoLoad: true,
+    // CRITICAL: Do NOT pass systemPrompt here. The Kotlin bridge sends a hidden
+    // sendMessage() during loadModel for system prompts, which corrupts the
+    // conversation state and causes ALL subsequent sendMessage calls to crash
+    // with "Failed to invoke the compiled model". We embed system instructions
+    // directly in the user message via SYSTEM_INSTRUCTIONS instead.
+    systemPrompt: undefined,
   }), []);
 
   const {
@@ -114,6 +120,20 @@ export default function ResultScreen() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelHookError]);
+
+  // Timeout fallback — if model isn't ready after 15s, use mock
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!hasStartedAnalysis.current) {
+        hasStartedAnalysis.current = true;
+        console.warn('[Result] Model load timeout (15s), falling back to mock');
+        setModelError('Model load timed out after 15 seconds');
+        runAnalysis(true);
+      }
+    }, 15000);
+    return () => clearTimeout(timeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Update inference state based on download progress
   useEffect(() => {

@@ -39,5 +39,9 @@
   "voice.speechFailed": "ಧ್ವನಿ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಯಿತು",
   "voice.startFailed": "ಕೇಳಲು ಪ್ರಾರಂಭಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
   "voice.inputMode.voice": "ಧ್ವನಿ",
-  "voice.inputMode.text": "ಟೈಪ್"
+  "voice.inputMode.text": "ಟೈಪ್",
+  "voice.greeting": "ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?",
+  "voice.profession": "ನಿಮ್ಮ ಪಾತ್ರ",
+  "voice.permissionDenied": "ಧ್ವನಿ ಇನ್‌ಪುಟ್‌ಗೆ ಮೈಕ್ರೋಫೋನ್ ಅನುಮತಿ ಅಗತ್ಯ",
+  "voice.permissionBtn": "ಅನುಮತಿ ನೀಡಿ"
 }

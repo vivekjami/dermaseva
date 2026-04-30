@@ -39,5 +39,9 @@
   "voice.speechFailed": "వాక్ గుర్తింపు విఫలమైంది",
   "voice.startFailed": "వినడం ప్రారంభించలేకపోయింది",
   "voice.inputMode.voice": "మాట",
-  "voice.inputMode.text": "టైప్"
+  "voice.inputMode.text": "టైప్",
+  "voice.greeting": "నేను మీకు ఎలా సహాయం చేయగలను?",
+  "voice.profession": "మీ పాత్ర",
+  "voice.permissionDenied": "వాయిస్ ఇన్‌పుట్ కోసం మైక్రోఫోన్ అనుమతి అవసరం",
+  "voice.permissionBtn": "అనుమతి ఇవ్వండి"
 }

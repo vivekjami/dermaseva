@@ -39,5 +39,9 @@
   "voice.speechFailed": "वाक् पहचान विफल",
   "voice.startFailed": "सुनना शुरू नहीं हो सका",
   "voice.inputMode.voice": "आवाज़",
-  "voice.inputMode.text": "टाइप"
+  "voice.inputMode.text": "टाइप",
+  "voice.greeting": "मैं आपकी कैसे मदद कर सकता हूँ?",
+  "voice.profession": "आपकी भूमिका",
+  "voice.permissionDenied": "वॉइस इनपुट के लिए माइक्रोफ़ोन की अनुमति आवश्यक है",
+  "voice.permissionBtn": "अनुमति दें"
 }
