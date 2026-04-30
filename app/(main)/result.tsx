@@ -4,16 +4,19 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as Speech from 'expo-speech';
 import { getHistory, saveHistory, buildHistoryContext } from '@/modules/db/patient-history';
 
+// llama.cpp engine (replaces LiteRT)
+import {
+  loadModel, runInference, runMockInference,
+  isModelDownloaded, downloadModel,
+  isModelLoaded, getLastModelError,
+  MODEL_SIZE_BYTES,
+} from '@/modules/ai/llama-engine';
 
-// Use the library's useModel hook — the PROVEN working pattern
-import { useModel, GEMMA_4_E2B_IT } from 'react-native-litert-lm';
-
-import { runMockInference, MODEL_SIZE_BYTES } from '@/modules/ai/litert';
 import { buildPrompt } from '@/modules/ai/prompt-builder';
 import { parseModelOutput, type ParsedResult } from '@/modules/ai/output-parser';
 import { useAppStore } from '@/store/app-store';
@@ -28,21 +31,6 @@ import { OtcCard } from '@/components/OtcCard';
 import { saveCase } from '@/modules/db/case-store';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
-// System instructions — embedded directly in user message, NOT in useModel config.
-// REASON: The Kotlin bridge sends systemPrompt via a hidden sendMessage() during
-// loadModel, corrupting the conversation state.
-const SYSTEM_INSTRUCTIONS = `You are DermaSeva, a health assistant for ASHA and Anganwadi workers in India.
-You handle: 1) Skin diseases 2) Child health (IMNCI) 3) Malnutrition (NHM/WHO guidelines).
-Reply ONLY with this JSON, no other text:
-{"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"actionSteps":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean,"guidelineSource":string|null,"followUpPlan":string|null}
-Rules:
-- Respond in the language requested by the worker.
-- actionSteps: specific steps for the health worker to take.
-- guidelineSource: cite IMNCI, NHM, WHO, or IAP.
-- followUpPlan: when to follow up.
-- For follow-up questions, provide updated advice based on new information.
-- If unsure set confidence<0.3. No text outside JSON.`;
-
 type InferenceState =
   | 'downloading'
   | 'loading_model'
@@ -50,7 +38,7 @@ type InferenceState =
   | 'done'
   | 'error';
 
-type InferenceSource = 'litert' | 'mock';
+type InferenceSource = 'llama' | 'mock';
 
 const SEVERITY_COLORS = { mild: '#437a22', moderate: '#da7101', severe: '#a12c7b' };
 const SEVERITY_BG    = { mild: '#d4dfcc', moderate: '#e7d7c4', severe: '#e0ced7' };
@@ -76,83 +64,59 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { workerType, language: appLanguage, conversationHistory, addMessage } = useAppStore();
 
-  const modelConfig = useMemo(() => ({
-    backend: 'cpu' as const, // Force CPU. GPU delegate is highly unstable on some Androids and causes nativeSendMessage crashes.
-    autoLoad: true,
-    // CRITICAL: Do NOT pass systemPrompt here. The Kotlin bridge sends a hidden
-    // sendMessage() during loadModel for system prompts, which corrupts the
-    // conversation state and causes ALL subsequent sendMessage calls to crash
-    // with "Failed to invoke the compiled model". We embed system instructions
-    // directly in the user message via SYSTEM_INSTRUCTIONS instead.
-    systemPrompt: undefined,
-  }), []);
-
-  const {
-    model,
-    isReady,
-    downloadProgress,
-    error: modelHookError,
-  } = useModel(GEMMA_4_E2B_IT, modelConfig);
-
-  const [inferenceState, setInferenceState] = useState<InferenceState>('downloading');
-  const [inferenceSource, setInferenceSource] = useState<InferenceSource>('litert');
+  const [inferenceState, setInferenceState] = useState<InferenceState>('loading_model');
+  const [inferenceSource, setInferenceSource] = useState<InferenceSource>('llama');
   const [result, setResult] = useState<ParsedResult | null>(null);
   const [inferenceMs, setInferenceMs] = useState(0);
   const [ragNote, setRagNote] = useState('');
   const [otcOverridden, setOtcOverridden] = useState(false);
   const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
-  const [modelError, setModelError] = useState('');
   const [analysisError, setAnalysisError] = useState('');
+  const [downloadPct, setDownloadPct] = useState(0);
   const hasStartedAnalysis = useRef(false);
 
+  // ─── Single clean flow: download → load → infer ────────────────────────────
   useEffect(() => {
-    if (!symptoms) { setInferenceState('error'); return; }
-  }, [symptoms]);
+    if (!symptoms || hasStartedAnalysis.current) return;
+    hasStartedAnalysis.current = true;
 
-  // When the model becomes ready, start analysis
-  useEffect(() => {
-    if (isReady && model && !hasStartedAnalysis.current) {
-      hasStartedAnalysis.current = true;
-      runAnalysis(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, model]);
+    (async () => {
+      try {
+        // 1. Check if model is downloaded
+        const downloaded = await isModelDownloaded();
+        if (!downloaded) {
+          setInferenceState('downloading');
+          console.warn('[Result] Model not found, downloading...');
+          const success = await downloadModel((progress) => {
+            setDownloadPct(progress.percentage);
+          });
+          if (!success) {
+            console.warn('[Result] Download failed, using guideline mode');
+            await runAnalysis(true);
+            return;
+          }
+        }
 
-  // If the model hook errors, fall back to mock
-  useEffect(() => {
-    if (modelHookError && !hasStartedAnalysis.current) {
-      hasStartedAnalysis.current = true;
-      setModelError(modelHookError);
-      console.warn('[Result] useModel hook error:', modelHookError);
-      runAnalysis(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelHookError]);
+        // 2. Load model (mmap — fast)
+        if (!isModelLoaded()) {
+          setInferenceState('loading_model');
+          const loaded = await loadModel();
+          if (!loaded) {
+            console.warn('[Result] Model load failed:', getLastModelError());
+            await runAnalysis(true);
+            return;
+          }
+        }
 
-  // Timeout fallback — if model isn't ready after 8s, use mock
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!hasStartedAnalysis.current) {
-        hasStartedAnalysis.current = true;
-        console.warn('[Result] Model load timeout (8s), falling back to mock');
-        setModelError('Model load timed out — using demo mode');
-        runAnalysis(true);
+        // 3. Run real inference
+        await runAnalysis(false);
+      } catch (e: unknown) {
+        console.error('[Result] Top-level error, falling back to mock:', e);
+        await runAnalysis(true);
       }
-    }, 8000);
-    return () => clearTimeout(timeout);
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Update inference state based on download progress — but ONLY before analysis starts.
-  // Once hasStartedAnalysis is true (mock or real), stop overriding inferenceState.
-  useEffect(() => {
-    if (hasStartedAnalysis.current) return; // Don't override once analysis is running
-    if (downloadProgress > 0 && downloadProgress < 1) {
-      setInferenceState('downloading');
-    } else if (downloadProgress >= 1 && !isReady) {
-      setInferenceState('loading_model');
-    }
-  }, [downloadProgress, isReady]);
+  }, [symptoms]);
 
   async function runAnalysis(useMock: boolean) {
     try {
@@ -163,7 +127,6 @@ export default function ResultScreen() {
       // 2. Retrieve relevant guideline chunks
       const symptomQuery = symptoms ?? 'skin rash itching';
       const ragChunks = await retrieveRelevantChunks(symptomQuery);
-
       const ragContext = buildRagContext(ragChunks);
 
       // 3. Retrieve recent case history for context
@@ -187,50 +150,41 @@ export default function ResultScreen() {
         isFollowUp,
         conversationHistory: isFollowUp ? conversationHistory : undefined,
       });
-      
-      let promptToSend = `${SYSTEM_INSTRUCTIONS}\n\n`;
-      if (historyContext) {
-        promptToSend += `Previous visits:\n${historyContext}\n\n`;
-      }
-      if (ragContext) {
-        promptToSend += `Guidelines:\n${ragContext.slice(0, 800)}\n\n`;
-      }
-      promptToSend += `---\n${basePrompt}`;
 
-      // 4. Run inference
-      let USE_MOCK = useMock;
+      let fullPrompt = '';
+      if (historyContext) fullPrompt += `Previous visits:\n${historyContext}\n\n`;
+      if (ragContext) fullPrompt += `Guidelines:\n${ragContext.slice(0, 800)}\n\n`;
+      fullPrompt += `---\n${basePrompt}`;
+
+      // 5. Run inference
       let rawText: string;
       let elapsed: number;
 
-      if (USE_MOCK || !model) {
+      if (useMock) {
         setInferenceSource('mock');
-        const mockOutput = runMockInference({ prompt: promptToSend });
+        const mockOutput = runMockInference({ prompt: fullPrompt });
         rawText = mockOutput.rawText;
         elapsed = mockOutput.inferenceTimeMs;
       } else {
-        setInferenceSource('litert');
-        const start = Date.now();
+        setInferenceSource('llama');
         try {
-          // The Gemma 4 E2B model provided by LiteRT is strictly text-only.
-          // Using sendMessageWithImage crashes the C++ engine. We must use sendMessage.
-          rawText = await model.sendMessage(promptToSend);
-          elapsed = Date.now() - start;
+          const output = await runInference({ prompt: fullPrompt });
+          rawText = output.rawText;
+          elapsed = output.inferenceTimeMs;
         } catch (inferenceErr: unknown) {
-          // Catch native crash, fall back to mock instead of showing error screen
           const errMsg = inferenceErr instanceof Error ? inferenceErr.message : String(inferenceErr);
-          console.error('[Result] sendMessage failed, falling back to mock:', errMsg);
-          setModelError(errMsg);
+          console.error('[Result] Inference failed, falling back to mock:', errMsg);
           setInferenceSource('mock');
-          const mockOutput = runMockInference({ prompt: promptToSend });
+          const mockOutput = runMockInference({ prompt: fullPrompt });
           rawText = mockOutput.rawText;
           elapsed = mockOutput.inferenceTimeMs;
         }
       }
       setInferenceMs(elapsed);
 
-      // 5. Parse and validate
+      // 6. Parse and validate
       let parsed = parseModelOutput(rawText);
-      parsed = { ...parsed, inferenceSource: USE_MOCK ? 'mock' : 'litert' };
+      parsed = { ...parsed, inferenceSource: useMock ? 'mock' : 'llama' };
 
       const validation = validateAgainstRag(parsed, ragChunks);
       setRagNote(validation.validationNote);
@@ -276,15 +230,12 @@ export default function ResultScreen() {
         category,
       });
 
-      // 6. Save to history
+      // 7. Save to history
       try {
         const sanitisedSymptoms = sanitiseSymptomsForStorage(symptoms ?? null);
-        
-        // Save to Patient History DB with a generated case ID
         const caseId = `case-${Date.now()}`;
         saveHistory(caseId, sanitisedSymptoms ?? '', JSON.stringify(parsed));
 
-        // Save to existing case store for analytics
         await saveCase({
           worker_type: workerType ?? 'general',
           condition_name: parsed.conditionName,
@@ -296,41 +247,38 @@ export default function ResultScreen() {
           thumbnail_base64: null,
           raw_symptoms: sanitisedSymptoms,
           language_used: voiceLang ?? 'en',
-          inference_source: USE_MOCK ? 'mock' : 'litert',
+          inference_source: useMock ? 'mock' : 'llama',
         });
       } catch (e) { console.warn('[History] Failed to save case:', e); }
 
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      const stack = e instanceof Error ? e.stack?.slice(0, 500) : '';
-      const fullError = `${msg}${stack ? '\n' + stack : ''}`;
-      console.error('[Result] Inference error:', fullError);
-      setAnalysisError(fullError);
+      console.error('[Result] Inference error:', msg);
+      setAnalysisError(msg);
       setInferenceState('error');
     }
   }
 
   // ── Downloading ──────────────────────────────────────────────────────────
-  if (inferenceState === 'downloading' && !isReady) {
-    const pct = Math.round(downloadProgress * 100);
+  if (inferenceState === 'downloading') {
     return (
       <SafeAreaView style={styles.centered}>
         <Text style={styles.errorIcon}>⬇️</Text>
         <Text style={styles.errorTitle}>
-          {pct > 0 ? 'Downloading Gemma 4 E2B…' : 'Preparing AI Model…'}
+          {downloadPct > 0 ? 'Downloading Gemma 4 E2B…' : 'Preparing AI Model…'}
         </Text>
-        {pct > 0 && (
+        {downloadPct > 0 && (
           <>
             <Text style={styles.loadingSubtext}>
-              {formatBytes(downloadProgress * MODEL_SIZE_BYTES)} / {formatBytes(MODEL_SIZE_BYTES)}
+              {formatBytes((downloadPct / 100) * MODEL_SIZE_BYTES)} / {formatBytes(MODEL_SIZE_BYTES)}
             </Text>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
+              <View style={[styles.progressBarFill, { width: `${downloadPct}%` }]} />
             </View>
-            <Text style={styles.progressPct}>{pct}%</Text>
+            <Text style={styles.progressPct}>{downloadPct}%</Text>
           </>
         )}
-        {pct === 0 && <ActivityIndicator size="large" color="#01696f" style={{ marginTop: 16 }} />}
+        {downloadPct === 0 && <ActivityIndicator size="large" color="#01696f" style={{ marginTop: 16 }} />}
         <Text style={styles.loadingSubtext}>
           Keep the app open. Do not close or lock your screen.
         </Text>
@@ -347,22 +295,8 @@ export default function ResultScreen() {
           {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing with AI…'}
         </Text>
         <Text style={styles.loadingSubtext}>
-          {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Preparing on-device AI engine'}
+          {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Memory-mapping model from disk'}
         </Text>
-        {inferenceState === 'loading_model' && (
-          <TouchableOpacity
-            style={[styles.btn, { marginTop: 24, backgroundColor: '#7a7974' }]}
-            onPress={() => {
-              if (!hasStartedAnalysis.current) {
-                hasStartedAnalysis.current = true;
-                setModelError('Skipped — using demo mode');
-                runAnalysis(true);
-              }
-            }}
-          >
-            <Text style={styles.btnText}>Skip → Use Demo Mode</Text>
-          </TouchableOpacity>
-        )}
       </SafeAreaView>
     );
   }
@@ -403,7 +337,7 @@ export default function ResultScreen() {
         {/* Inference source indicator */}
         <View style={styles.sourceIndicator}>
           <Text style={styles.sourceText}>
-            {inferenceSource === 'litert' ? '⚡ On-Device AI (Gemma 4 E2B)' : '📋 Guideline-Based Analysis'}
+            {inferenceSource === 'llama' ? '⚡ On-Device AI (Gemma 4 E2B)' : '📋 Guideline-Based Analysis'}
           </Text>
         </View>
 
@@ -506,7 +440,7 @@ export default function ResultScreen() {
         </TouchableOpacity>
 
         <Text style={styles.debugText}>
-          {inferenceMs}ms • {inferenceSource === 'litert' ? 'On-device' : 'Guidelines'} • {inputMode}
+          {inferenceMs}ms • {inferenceSource === 'llama' ? 'On-device (llama.cpp)' : 'Guidelines'} • {inputMode}
         </Text>
       </ScrollView>
     </SafeAreaView>

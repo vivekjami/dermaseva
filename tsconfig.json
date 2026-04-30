@@ -5,9 +5,6 @@
     "paths": {
       "@/*": [
         "./*"
-      ],
-      "react-native-litert-lm": [
-        "./modules/stubs/react-native-litert-lm/index.ts"
       ]
     }
   },

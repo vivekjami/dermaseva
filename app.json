@@ -40,7 +40,12 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-asset",
-      "react-native-litert-lm",
+      [
+        "llama.rn",
+        {
+          "enableOpenCL": true
+        }
+      ],
       [
         "expo-speech-recognition",
         {

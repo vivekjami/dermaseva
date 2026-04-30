@@ -15,7 +15,7 @@ export interface ParsedResult {
   followUpPlan: string | null;    // Follow-up schedule
   isLowConfidence: boolean;
   parseError: string | null;
-  inferenceSource: 'litert' | 'mock';
+  inferenceSource: 'llama' | 'mock';
 }
 
 const DEFAULT_REFERRAL =
@@ -182,7 +182,7 @@ export function parseModelOutput(rawText: string): ParsedResult {
     followUpPlan,
     isLowConfidence,
     parseError: null,
-    inferenceSource: 'litert',
+    inferenceSource: 'llama',
   };
 }
 
@@ -200,6 +200,6 @@ function lowConfidenceFallback(reason: string): ParsedResult {
     followUpPlan: null,
     isLowConfidence: true,
     parseError: reason,
-    inferenceSource: 'litert',
+    inferenceSource: 'llama',
   };
 }

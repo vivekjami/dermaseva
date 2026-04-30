@@ -2,7 +2,7 @@
 
 const SENSITIVE_PATTERNS = [
   /data:image\/[a-z]+;base64,[A-Za-z0-9+/=]{20,}/g,
-  /file:\/\/[^\s"']+\.(jpg|jpeg|png|litertlm)/gi,
+  /file:\/\/[^\s"']+\.(jpg|jpeg|png|gguf)/gi,
   /\b[6-9]\d{9}\b/g,
 ];
 

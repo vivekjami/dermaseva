@@ -5,7 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { MODEL_LOCAL_PATH, MODEL_SIZE_BYTES } from '@/modules/ai/model-constants';
 
 // Placeholder hash — compute the real SHA-256 after downloading the actual
-// Gemma 4 E4B model file and run: sha256sum gemma-4-E4B-it.litertlm
+// Gemma 4 E2B GGUF model: sha256sum gemma-4-E2B-it-Q4_K_M.gguf
 export const EXPECTED_MODEL_SHA256 =
   '0000000000000000000000000000000000000000000000000000000000000000';
 
@@ -26,7 +26,7 @@ export async function verifyModelIntegrity(): Promise<VerificationResult> {
   }
 
   const sizeBytes = info.size ?? 0;
-  const minSize = MODEL_SIZE_BYTES * 0.90; // 90% of expected (3.65 GB)
+  const minSize = MODEL_SIZE_BYTES * 0.90; // 90% of expected (~3.11 GB GGUF)
   const maxSize = MODEL_SIZE_BYTES * 1.10; // 110% of expected
 
   if (sizeBytes < minSize || sizeBytes > maxSize) {
