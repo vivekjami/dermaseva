@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Animated, Keyboard,
+  ScrollView, Animated, Keyboard, Linking, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -106,21 +106,34 @@ export default function VoiceScreen() {
     setSpeechModelStatus('downloading');
     try {
       await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale });
-      // After download dialog closes, re-check installed locales
-      const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
-      const installed = new Set<string>(
-        (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
+    } catch {
+      // androidTriggerOfflineModelDownload failed — open settings manually
+      Alert.alert(
+        'Download Offline Language',
+        'Go to Google Voice Settings → Offline Speech Recognition and download the language pack.',
+        [
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          { text: 'Cancel', style: 'cancel' },
+        ]
       );
-      setInstalledLocales(installed);
-      if (isLocaleInstalled(locale, installed)) {
-        setSpeechModelStatus('available');
-      } else {
+    }
+    // Re-check installed locales after user returns
+    setTimeout(async () => {
+      try {
+        const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
+        const installed = new Set<string>(
+          (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
+        );
+        setInstalledLocales(installed);
+        if (isLocaleInstalled(locale, installed)) {
+          setSpeechModelStatus('available');
+        } else {
+          setSpeechModelStatus('needs_download');
+        }
+      } catch {
         setSpeechModelStatus('needs_download');
       }
-    } catch {
-      // User dismissed — recheck
-      setSpeechModelStatus('needs_download');
-    }
+    }, 2000);
   };
 
   // Speak greeting on mount

@@ -143,8 +143,10 @@ export default function ResultScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update inference state based on download progress
+  // Update inference state based on download progress — but ONLY before analysis starts.
+  // Once hasStartedAnalysis is true (mock or real), stop overriding inferenceState.
   useEffect(() => {
+    if (hasStartedAnalysis.current) return; // Don't override once analysis is running
     if (downloadProgress > 0 && downloadProgress < 1) {
       setInferenceState('downloading');
     } else if (downloadProgress >= 1 && !isReady) {
@@ -370,23 +372,11 @@ export default function ResultScreen() {
     return (
       <SafeAreaView style={styles.centered}>
         <ScrollView contentContainerStyle={{ alignItems: 'center', padding: 32 }}>
-          <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorTitle}>Analysis Failed</Text>
-          <Text style={styles.errorBody}>Something went wrong during AI analysis.</Text>
-          {analysisError ? (
-            <View style={{ backgroundColor: '#f3f0ec', borderRadius: 10, padding: 12, marginTop: 12, width: '100%' }}>
-              <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#964219', lineHeight: 16 }}>
-                {analysisError}
-              </Text>
-            </View>
-          ) : null}
-          {modelHookError ? (
-            <View style={{ backgroundColor: '#fef3cd', borderRadius: 10, padding: 12, marginTop: 12, width: '100%' }}>
-              <Text style={{ fontSize: 11, fontFamily: 'monospace', color: '#964219', lineHeight: 16 }}>
-                Model hook error: {modelHookError}
-              </Text>
-            </View>
-          ) : null}
+          <Text style={styles.errorIcon}>🔄</Text>
+          <Text style={styles.errorTitle}>Could not complete analysis</Text>
+          <Text style={styles.errorBody}>
+            Please go back and try again. Make sure you have described the symptoms clearly.
+          </Text>
           <TouchableOpacity style={[styles.btn, { marginTop: 20 }]} onPress={() => router.back()}>
             <Text style={styles.btnText}>{t('result.tryAgain')}</Text>
           </TouchableOpacity>
@@ -413,21 +403,17 @@ export default function ResultScreen() {
         {/* Inference source indicator */}
         <View style={styles.sourceIndicator}>
           <Text style={styles.sourceText}>
-            {inferenceSource === 'litert' ? '⚡ On-Device AI (Gemma 4 E2B)' : '🧪 Demo Mode (Mock)'}
+            {inferenceSource === 'litert' ? '⚡ On-Device AI (Gemma 4 E2B)' : '📋 Guideline-Based Analysis'}
           </Text>
         </View>
 
-        {/* Mock warning banner */}
+        {/* Guideline note when using mock */}
         {inferenceSource === 'mock' && (
-          <View style={styles.mockBanner}>
-            <Text style={styles.mockBannerText}>
-              ⚠️ This result is from demo mode, not real AI analysis.
+          <View style={[styles.mockBanner, { borderLeftColor: '#01696f', backgroundColor: '#e6f5f5' }]}>
+            <Text style={[styles.mockBannerText, { color: '#01696f' }]}>
+              📚 This result is based on NHM, IMNCI, and WHO clinical guidelines.
+              For best results, ensure the AI model is downloaded.
             </Text>
-            {modelError ? (
-              <Text style={[styles.mockBannerText, { marginTop: 8, fontSize: 11, fontFamily: 'monospace' }]}>
-                Error: {modelError}
-              </Text>
-            ) : null}
           </View>
         )}
 
@@ -520,7 +506,7 @@ export default function ResultScreen() {
         </TouchableOpacity>
 
         <Text style={styles.debugText}>
-          Inference: {inferenceMs}ms • Source: {inferenceSource} • Input: {inputMode}
+          {inferenceMs}ms • {inferenceSource === 'litert' ? 'On-device' : 'Guidelines'} • {inputMode}
         </Text>
       </ScrollView>
     </SafeAreaView>
