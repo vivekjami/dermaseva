@@ -53,34 +53,77 @@ export default function VoiceScreen() {
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
-  const [speechModelStatus, setSpeechModelStatus] = useState<'checking' | 'available' | 'downloading' | 'unavailable' | null>(null);
+  const [speechModelStatus, setSpeechModelStatus] = useState<'checking' | 'available' | 'downloading' | 'unavailable' | 'needs_download' | null>(null);
+  const [installedLocales, setInstalledLocales] = useState<Set<string>>(new Set());
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
 
-  // Check if on-device speech model is available for the selected language
-  const checkAndDownloadSpeechModel = async (locale: string) => {
-    setSpeechModelStatus('checking');
-    try {
-      const supported = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
-      if (!supported) {
-        setSpeechModelStatus('unavailable');
-        return;
-      }
-      setSpeechModelStatus('downloading');
-      await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale });
-      setSpeechModelStatus('available');
-    } catch {
-      // User dismissed download dialog or already installed
-      setSpeechModelStatus('available');
-    }
-  };
-
-  // Check on mount for current language
+  // Check which offline speech models are already installed
   useEffect(() => {
-    checkAndDownloadSpeechModel(selectedLanguage);
+    async function loadInstalledLocales() {
+      setSpeechModelStatus('checking');
+      try {
+        const supported = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
+        if (!supported) {
+          setSpeechModelStatus('unavailable');
+          return;
+        }
+        const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({
+          onDevice: true,
+        });
+        // locales.locales contains all installed on-device locales
+        const installed = new Set<string>(
+          (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
+        );
+        setInstalledLocales(installed);
+
+        // Check if current language is installed
+        if (isLocaleInstalled(selectedLanguage, installed)) {
+          setSpeechModelStatus('available');
+        } else {
+          setSpeechModelStatus('needs_download');
+        }
+      } catch {
+        // getSupportedLocales not available — assume available
+        setSpeechModelStatus('available');
+      }
+    }
+    loadInstalledLocales();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Helper: check if a locale (e.g. "te-IN") is in the installed set
+  function isLocaleInstalled(locale: string, installed: Set<string>): boolean {
+    const lower = locale.toLowerCase();
+    // Check exact match (te-in), language-only match (te), or partial (te_in)
+    return installed.has(lower)
+      || installed.has(lower.replace('-', '_'))
+      || installed.has(lower.split('-')[0])
+      || [...installed].some((l) => l.startsWith(lower.split('-')[0]));
+  }
+
+  // Trigger download only when user explicitly requests it for a missing language
+  const downloadSpeechModel = async (locale: string) => {
+    setSpeechModelStatus('downloading');
+    try {
+      await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale });
+      // After download dialog closes, re-check installed locales
+      const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({ onDevice: true });
+      const installed = new Set<string>(
+        (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
+      );
+      setInstalledLocales(installed);
+      if (isLocaleInstalled(locale, installed)) {
+        setSpeechModelStatus('available');
+      } else {
+        setSpeechModelStatus('needs_download');
+      }
+    } catch {
+      // User dismissed — recheck
+      setSpeechModelStatus('needs_download');
+    }
+  };
 
   // Speak greeting on mount
   useEffect(() => {
@@ -145,8 +188,12 @@ export default function VoiceScreen() {
     setSelectedLanguage(langCode);
     setLanguage(appCode);
     i18n.changeLanguage(appCode);
-    // Trigger offline model download for the new language
-    checkAndDownloadSpeechModel(langCode);
+    // Check if this language's offline model is installed (no download dialog)
+    if (isLocaleInstalled(langCode, installedLocales)) {
+      setSpeechModelStatus('available');
+    } else {
+      setSpeechModelStatus('needs_download');
+    }
   };
 
   const toggleListening = async () => {
@@ -306,31 +353,46 @@ export default function VoiceScreen() {
             <Text style={styles.setupLabel}>{t('voice.language')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.langScroll}>
               <View style={styles.langRow}>
-                {VOICE_LANGUAGES.map((lang) => (
-                  <TouchableOpacity
-                    key={lang.code}
-                    style={[styles.langChip, selectedLanguage === lang.code && styles.langChipSelected]}
-                    onPress={() => handleLanguageChange(lang.code, lang.appCode)}
-                  >
-                    <Text style={[styles.langText, selectedLanguage === lang.code && styles.langTextSelected]}>
-                      {lang.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {VOICE_LANGUAGES.map((lang) => {
+                  const installed = isLocaleInstalled(lang.code, installedLocales);
+                  const isSelected = selectedLanguage === lang.code;
+                  return (
+                    <TouchableOpacity
+                      key={lang.code}
+                      style={[styles.langChip, isSelected && styles.langChipSelected]}
+                      onPress={() => handleLanguageChange(lang.code, lang.appCode)}
+                    >
+                      <Text style={[styles.langText, isSelected && styles.langTextSelected]}>
+                        {lang.label} {installed ? '✓' : '↓'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </ScrollView>
           </View>
         )}
 
-        {/* Speech model status */}
+        {/* Speech model status — only show actionable states */}
+        {speechModelStatus === 'needs_download' && (
+          <TouchableOpacity
+            style={[styles.followUpBanner, { backgroundColor: '#fff8e1', borderColor: '#f9a825' }]}
+            onPress={() => downloadSpeechModel(selectedLanguage)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.followUpText}>
+              ↓ Offline speech model not installed for this language. Tap to download.
+            </Text>
+          </TouchableOpacity>
+        )}
         {speechModelStatus === 'downloading' && (
           <View style={[styles.followUpBanner, { backgroundColor: '#fff8e1', borderColor: '#f9a825' }]}>
-            <Text style={styles.followUpText}>⏳ Downloading offline speech model for this language...</Text>
+            <Text style={styles.followUpText}>⏳ Downloading offline speech model...</Text>
           </View>
         )}
         {speechModelStatus === 'unavailable' && (
           <View style={[styles.followUpBanner, { backgroundColor: '#fce4ec', borderColor: '#e53935' }]}>
-            <Text style={styles.followUpText}>📡 On-device speech not supported — using cloud recognition</Text>
+            <Text style={styles.followUpText}>📡 On-device speech not supported — using cloud</Text>
           </View>
         )}
 
