@@ -62,6 +62,9 @@ export default function VoiceScreen() {
       if (!available) {
         console.warn('[Voice] Speech recognition not available on this device');
       }
+    }).catch((err) => {
+      console.warn('[Voice] isAvailable check failed:', err);
+      setVoiceAvailable(true); // Assume available — will fail gracefully on start
     });
   }, []);
 
@@ -206,12 +209,15 @@ export default function VoiceScreen() {
       return;
     }
 
-    // 3. Destroy and recreate to clear any stale state
+    // 3. Cancel any previous session (do NOT use Voice.destroy() — it
+    //    nullifies the native SpeechRecognizer module, causing
+    //    "cannot read property 'startSpeech' of null" on next start).
     isProcessing.current = true;
     try {
-      await Voice.destroy();
-      // Small delay to let the native engine fully release
-      await new Promise((r) => setTimeout(r, 200));
+      // Cancel clears any pending recognition without destroying the module
+      await Voice.cancel();
+      // Small delay to let the native engine fully release the mic
+      await new Promise((r) => setTimeout(r, 300));
       await Voice.start(selectedLanguage);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
