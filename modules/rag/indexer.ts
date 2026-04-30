@@ -1,9 +1,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 import { Asset } from 'expo-asset';
-import { NHM_ASHA_ASSET, WHO_SKIN_ASSET } from '@/docs/index';
+import { NHM_ASHA_ASSET, WHO_SKIN_ASSET, IMNCI_CHILD_HEALTH_ASSET, MALNUTRITION_ASSET } from '@/docs/index';
 
-export const RAG_INDEX_VERSION = 6;
+export const RAG_INDEX_VERSION = 7;
 const DB_NAME = 'dermaseva-rag.db';
 const CHUNK_MAX_WORDS = 80;
 const CHUNK_OVERLAP_WORDS = 15;
@@ -51,10 +51,9 @@ export async function isIndexUpToDate(): Promise<boolean> {
 }
 
 // ── Document sources ──────────────────────────────────────────────────────────
-// require() calls must be static — no dynamic paths
 interface DocSource {
   id: string;
-  module: number;           // result of require()
+  module: number;
   conditionTags: string[];
 }
 
@@ -75,6 +74,26 @@ const DOC_SOURCES: DocSource[] = [
       'dermatophytosis', 'tinea', 'pityriasis versicolor', 'scabies',
       'eczema', 'atopic dermatitis', 'contact dermatitis', 'miliaria',
       'leprosy', 'cellulitis', 'melanoma', 'skin cancer',
+    ],
+  },
+  {
+    id: 'imnci-child-health',
+    module: IMNCI_CHILD_HEALTH_ASSET,
+    conditionTags: [
+      'newborn', 'danger signs', 'pneumonia', 'ari', 'diarrhea',
+      'dehydration', 'ors', 'zinc', 'fever', 'malaria', 'measles',
+      'immunization', 'vaccine', 'growth monitoring', 'breastfeeding',
+      'complementary feeding', 'referral',
+    ],
+  },
+  {
+    id: 'malnutrition',
+    module: MALNUTRITION_ASSET,
+    conditionTags: [
+      'sam', 'mam', 'malnutrition', 'wasting', 'stunting', 'underweight',
+      'muac', 'nrc', 'rutf', 'cmam', 'anemia', 'iron', 'vitamin a',
+      'iycf', 'breastfeeding', 'complementary feeding', 'growth',
+      'poshan', 'icds', 'anganwadi', 'deworming',
     ],
   },
 ];

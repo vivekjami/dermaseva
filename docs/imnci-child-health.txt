@@ -1,0 +1,148 @@
+IMNCI — Integrated Management of Neonatal and Childhood Illness
+Indian NHM and WHO Guidelines for ASHA and Anganwadi Workers
+
+SECTION 1: DANGER SIGNS IN NEWBORNS (0-28 DAYS)
+
+Immediate referral required if any of these signs are present:
+- Not feeding well or stopped breastfeeding
+- Convulsions or fits
+- Fast breathing (60 or more breaths per minute)
+- Severe chest indrawing
+- Temperature above 37.5°C or below 35.5°C
+- Jaundice appearing within 24 hours of birth
+- Umbilical redness spreading to surrounding skin
+- Bleeding from any site
+- Lethargy or unconsciousness
+- Bulging fontanelle
+
+ASHA worker action: Do NOT attempt treatment. Arrange immediate referral to PHC or district hospital. Keep baby warm during transport. Continue breastfeeding if possible.
+
+SECTION 2: ACUTE RESPIRATORY INFECTIONS (ARI)
+
+Classification by NHM guidelines:
+- No pneumonia (cough/cold): Cough less than 14 days, no fast breathing, no chest indrawing
+  Management: Home care. Increase fluids. Continue feeding. Soothe throat with safe remedies.
+  Return if: breathing becomes fast, breathing becomes difficult, child becomes sicker, child cannot drink.
+
+- Pneumonia: Fast breathing present (under 2 months: 60+/min, 2-12 months: 50+/min, 1-5 years: 40+/min)
+  Management: Give first dose of Amoxicillin. Refer to PHC. Advise mother on danger signs.
+  Amoxicillin dose: 2-12 months: 125mg twice daily for 5 days. 1-5 years: 250mg twice daily for 5 days.
+
+- Severe Pneumonia: Chest indrawing, stridor, inability to drink, convulsions, abnormally sleepy
+  Management: Give first dose of antibiotic. Refer URGENTLY to hospital. Keep child warm.
+
+SECTION 3: DIARRHEA MANAGEMENT
+
+Classification:
+- No dehydration: Less than 2 loose stools, no signs of dehydration
+  Management: Plan A — Give extra fluids including ORS. Continue feeding. Zinc supplementation.
+  ORS: After each loose stool — under 2 years: 50-100ml. 2-5 years: 100-200ml.
+  Zinc: Under 6 months: 10mg daily for 14 days. Over 6 months: 20mg daily for 14 days.
+
+- Some dehydration: Restless/irritable, sunken eyes, drinks eagerly, skin pinch goes back slowly
+  Management: Plan B — Give ORS in health facility. 75ml/kg over 4 hours. Reassess after 4 hours.
+  If improved: switch to Plan A. If same: repeat Plan B. If worse: switch to Plan C.
+
+- Severe dehydration: Lethargic/unconscious, sunken eyes, unable to drink, skin pinch very slow
+  Management: Plan C — Start IV Ringer's Lactate immediately. Refer URGENTLY to hospital.
+  If IV not possible: give ORS by nasogastric tube 20ml/kg/hour for 6 hours.
+
+- Dysentery (blood in stool):
+  Refer to PHC. Give first dose of Ciprofloxacin. Give ORS. Do NOT give anti-diarrheal medicines.
+
+- Persistent diarrhea (14 days or more):
+  Refer to PHC for evaluation. Check for malnutrition. Give Vitamin A if not given in last 6 months.
+
+SECTION 4: FEVER MANAGEMENT
+
+Assessment:
+- Check duration of fever
+- Check for stiff neck (meningitis sign)
+- Check for signs of measles
+- Check for ear problems
+- Test for malaria in endemic areas (RDT kit)
+
+Malaria management (if RDT positive):
+- P. falciparum: ACT (Artesunate-based Combination Therapy) as per national protocol
+- P. vivax: Chloroquine for 3 days + Primaquine for 14 days
+- Severe malaria: Pre-referral dose of Artesunate. Refer URGENTLY.
+
+Measles:
+- Give Vitamin A: Under 6 months: 50,000 IU. 6-11 months: 100,000 IU. 12 months-5 years: 200,000 IU.
+- Treat eye/mouth complications. Monitor for pneumonia.
+- Severe measles: Refer to hospital.
+
+SECTION 5: IMMUNIZATION SCHEDULE (NHM/UIP)
+
+Birth: BCG, OPV-0, Hepatitis B birth dose
+6 weeks: OPV-1, Pentavalent-1, Rotavirus-1, fIPV-1, PCV-1
+10 weeks: OPV-2, Pentavalent-2, Rotavirus-2
+14 weeks: OPV-3, Pentavalent-3, Rotavirus-3, fIPV-2, PCV-2
+9 months: Measles-Rubella-1, JE-1, PCV Booster, Vitamin A (1st dose)
+16-24 months: Measles-Rubella-2, JE-2, DPT Booster-1, OPV Booster
+5-6 years: DPT Booster-2
+10 years: Td (Tetanus-diphtheria)
+16 years: Td (Tetanus-diphtheria)
+
+Missed doses: Resume schedule from where interrupted. Do not restart.
+Multiple vaccines can be given simultaneously at different sites.
+
+SECTION 6: GROWTH MONITORING
+
+WHO Growth Standards are used in India:
+- Weight-for-Age (underweight screening)
+- Length/Height-for-Age (stunting screening)  
+- Weight-for-Length/Height (wasting screening)
+- MUAC (Mid-Upper Arm Circumference) for acute malnutrition
+
+MUAC Classification (6 months to 5 years):
+- Green (>=12.5 cm): Normal nutritional status
+- Yellow (11.5-12.4 cm): Moderate Acute Malnutrition (MAM)
+- Red (<11.5 cm): Severe Acute Malnutrition (SAM)
+
+Weight-for-Age Z-scores:
+- Normal: Above -2 SD
+- Underweight: Between -2 SD and -3 SD
+- Severely underweight: Below -3 SD
+
+Monthly growth monitoring at Anganwadi Centre is mandatory.
+Plot on growth chart. Identify growth faltering early.
+
+SECTION 7: BREASTFEEDING COUNSELING
+
+Initiation: Within 1 hour of birth. No pre-lacteal feeds.
+Exclusive breastfeeding: Birth to 6 months. No water, no other foods.
+Frequency: On demand, at least 8-12 times in 24 hours.
+Positioning: Baby's body facing mother, mouth wide open, lower lip turned out.
+
+Common problems and solutions:
+- Insufficient milk perception: Reassure. Increase frequency. Check positioning.
+- Sore nipples: Check attachment. Allow nipples to air dry.
+- Engorgement: Feed frequently. Warm compresses before feed. Cold compresses after.
+- Mastitis: Continue breastfeeding. Refer if fever persists or abscess suspected.
+
+Complementary feeding: Start at 6 months with semi-solid foods.
+6-8 months: 2-3 meals per day. 9-11 months: 3-4 meals per day. 12-24 months: 3-4 meals + snacks.
+Continue breastfeeding until at least 2 years of age.
+
+SECTION 8: WHEN TO REFER
+
+Immediate referral (same day):
+- Any danger sign in newborn
+- Severe pneumonia or severe dehydration
+- Severe malnutrition with complications
+- Convulsions or unconsciousness
+- Severe malaria
+- Suspected meningitis
+
+Urgent referral (within 24-48 hours):
+- Pneumonia not responding to first-line antibiotics
+- Persistent diarrhea
+- Moderate malnutrition with poor appetite
+- Fever not responding to treatment after 48 hours
+
+Follow-up visits:
+- Pneumonia: Day 3 after antibiotic started
+- Diarrhea: Day 3 or when episode ends
+- Malnutrition: Weekly for SAM, biweekly for MAM
+- Immunization: As per schedule

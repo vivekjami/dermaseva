@@ -30,13 +30,18 @@ import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
 // System instructions — embedded directly in user message, NOT in useModel config.
 // REASON: The Kotlin bridge sends systemPrompt via a hidden sendMessage() during
-// loadModel. This hidden call corrupts the conversation state on this model, causing
-// ALL subsequent sendMessage calls to crash with "Failed to invoke the compiled model".
-const SYSTEM_INSTRUCTIONS = `You are DermaSeva, a skin screening tool for ASHA workers in India.
+// loadModel, corrupting the conversation state.
+const SYSTEM_INSTRUCTIONS = `You are DermaSeva, a health assistant for ASHA and Anganwadi workers in India.
+You handle: 1) Skin diseases 2) Child health (IMNCI) 3) Malnutrition (NHM/WHO guidelines).
 Reply ONLY with this JSON, no other text:
-{"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean}
-OTC only for: fungal infection, scabies, mild eczema, contact dermatitis, heat rash.
-Always set doctorReferral. Set confidence<0.3 if unsure.`;
+{"conditionName":string,"confidence":0.0-1.0,"severity":"mild"|"moderate"|"severe","keySigns":[string],"actionSteps":[string],"otcSuggestion":string|null,"doctorReferral":string,"needsUrgentReferral":boolean,"guidelineSource":string|null,"followUpPlan":string|null}
+Rules:
+- Respond in the language requested by the worker.
+- actionSteps: specific steps for the health worker to take.
+- guidelineSource: cite IMNCI, NHM, WHO, or IAP.
+- followUpPlan: when to follow up.
+- For follow-up questions, provide updated advice based on new information.
+- If unsure set confidence<0.3. No text outside JSON.`;
 
 type InferenceState =
   | 'downloading'
@@ -57,15 +62,19 @@ function formatBytes(bytes: number): string {
 }
 
 export default function ResultScreen() {
-  const { symptoms, language: voiceLang, inputMode: rawInputMode } = useLocalSearchParams<{
+  const { symptoms, language: voiceLang, inputMode: rawInputMode, category: rawCategory, isFollowUp: rawFollowUp } = useLocalSearchParams<{
     symptoms: string;
     language: string;
     inputMode: string;
+    category: string;
+    isFollowUp: string;
   }>();
   const inputMode = (rawInputMode === 'text' ? 'text' : 'voice') as 'voice' | 'text';
+  const category = (rawCategory === 'child_health' || rawCategory === 'malnutrition' ? rawCategory : 'skin') as import('@/store/app-store').Category;
+  const isFollowUp = rawFollowUp === 'true';
   const router = useRouter();
   const { t } = useTranslation();
-  const { workerType, language: appLanguage } = useAppStore();
+  const { workerType, language: appLanguage, conversationHistory, addMessage } = useAppStore();
 
   const modelConfig = useMemo(() => ({
     backend: 'cpu' as const, // Force CPU. GPU delegate is highly unstable on some Androids and causes nativeSendMessage crashes.
@@ -172,14 +181,17 @@ export default function ResultScreen() {
         workerType: workerType ?? 'general',
         languageCode: voiceLang ?? appLanguage ?? 'en',
         inputMode,
+        category,
+        isFollowUp,
+        conversationHistory: isFollowUp ? conversationHistory : undefined,
       });
       
       let promptToSend = `${SYSTEM_INSTRUCTIONS}\n\n`;
       if (historyContext) {
-        promptToSend += `Patient History (Past Visits):\n${historyContext}\n\n`;
+        promptToSend += `Previous visits:\n${historyContext}\n\n`;
       }
       if (ragContext) {
-        promptToSend += `Guidelines:\n${ragContext.slice(0, 500)}\n\n`;
+        promptToSend += `Guidelines:\n${ragContext.slice(0, 800)}\n\n`;
       }
       promptToSend += `---\n${basePrompt}`;
 
@@ -245,11 +257,22 @@ export default function ResultScreen() {
       setResult(parsed);
       setInferenceState('done');
 
-      // Read diagnosis aloud
+      // Read diagnosis aloud in the selected language
+      const langCode = (voiceLang || 'en-US').split('-')[0];
+      const actionSummary = parsed.actionSteps?.length > 0
+        ? `. ${parsed.actionSteps[0]}` : '';
       Speech.speak(
-        `${parsed.conditionName}. Severity is ${parsed.severity}. ${parsed.doctorReferral}`,
-        { language: voiceLang || 'en-US' }
+        `${parsed.conditionName}. ${parsed.severity}. ${parsed.doctorReferral}${actionSummary}`,
+        { language: langCode, rate: 0.85 }
       );
+
+      // Save AI response to conversation history
+      addMessage({
+        role: 'assistant',
+        text: `${parsed.conditionName} (${parsed.severity}): ${parsed.doctorReferral}`,
+        timestamp: Date.now(),
+        category,
+      });
 
       // 6. Save to history
       try {
@@ -430,6 +453,31 @@ export default function ResultScreen() {
           </View>
         )}
 
+        {/* Action Steps — what the health worker should do */}
+        {result.actionSteps && result.actionSteps.length > 0 && (
+          <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: '#01696f' }]}>
+            <Text style={styles.sectionLabel}>📋 Action Steps</Text>
+            {result.actionSteps.map((step, i) => (
+              <Text key={i} style={styles.actionStep}>{i + 1}. {step}</Text>
+            ))}
+          </View>
+        )}
+
+        {/* Guideline Source */}
+        {result.guidelineSource && (
+          <View style={[styles.ragNote, { backgroundColor: '#e6f5f5' }]}>
+            <Text style={styles.ragNoteText}>📚 Source: {result.guidelineSource}</Text>
+          </View>
+        )}
+
+        {/* Follow-up Plan */}
+        {result.followUpPlan && (
+          <View style={[styles.card, { backgroundColor: '#fef9ee' }]}>
+            <Text style={styles.sectionLabel}>📅 Follow-up Plan</Text>
+            <Text style={styles.bullet}>{result.followUpPlan}</Text>
+          </View>
+        )}
+
         <ReferralCTA decision={getReferralDecision(result.severity, result.needsUrgentReferral, result.needsUrgentReferral)} doctorReferralText={result.doctorReferral} />
 
         {ragNote ? (
@@ -523,6 +571,7 @@ const styles = StyleSheet.create({
   confidenceValue: { fontSize: 13, fontWeight: '600', color: '#28251d', width: 36, textAlign: 'right' },
   sectionLabel: { fontSize: 13, fontWeight: '600', color: '#7a7974', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   bullet: { fontSize: 15, color: '#28251d', marginBottom: 4, lineHeight: 22 },
+  actionStep: { fontSize: 15, color: '#28251d', marginBottom: 6, lineHeight: 22, paddingLeft: 4 },
   btn: { backgroundColor: '#01696f', paddingVertical: 14, paddingHorizontal: 40, borderRadius: 12, marginBottom: 12, width: '100%', alignItems: 'center' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   btnSecondary: { paddingVertical: 12, paddingHorizontal: 40 },

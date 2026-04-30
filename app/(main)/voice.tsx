@@ -8,12 +8,13 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+import * as Speech from 'expo-speech';
 import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { useAppStore } from '@/store/app-store';
+import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
 
-const MAX_CHARS = 800;
+const MAX_CHARS = 1200;
 
 const VOICE_LANGUAGES = [
   { label: 'English', code: 'en-US', appCode: 'en' },
@@ -24,10 +25,10 @@ const VOICE_LANGUAGES = [
   { label: 'मराठी', code: 'mr-IN', appCode: 'mr' },
 ];
 
-const WORKER_TYPES = [
-  { key: 'asha' as const, emoji: '🏥' },
-  { key: 'anganwadi' as const, emoji: '👶' },
-  { key: 'general' as const, emoji: '🩺' },
+const CATEGORIES: { key: Category; emoji: string; labelKey: string }[] = [
+  { key: 'skin', emoji: '🧴', labelKey: 'category.skin' },
+  { key: 'child_health', emoji: '👶', labelKey: 'category.childHealth' },
+  { key: 'malnutrition', emoji: '🍎', labelKey: 'category.malnutrition' },
 ];
 
 type InputMode = 'voice' | 'text';
@@ -36,7 +37,8 @@ export default function VoiceScreen() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
   const {
-    language: appLanguage, workerType, setLanguage, setWorkerType,
+    language: appLanguage, workerType, category, conversationHistory,
+    setLanguage, setCategory, addMessage,
   } = useAppStore();
 
   const [inputMode, setInputMode] = useState<InputMode>('voice');
@@ -46,37 +48,44 @@ export default function VoiceScreen() {
     VOICE_LANGUAGES.find((l) => l.appCode === appLanguage)?.code ?? 'en-US'
   );
   const [error, setError] = useState('');
-  const [showSetup, setShowSetup] = useState(!workerType);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isFollowUp, setIsFollowUp] = useState(false);
 
-  // Pulse animation for mic button
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scrollRef = useRef<ScrollView>(null);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
 
-  // Check if on-device speech model is available, trigger download if not
+  // Check if on-device speech model is available
   useEffect(() => {
     async function checkOfflineModel() {
       try {
         const onDeviceAvailable = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
         if (onDeviceAvailable) {
-          // Trigger offline model download for the selected language
-          // This opens a system dialog — user can dismiss if already installed
           ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
             locale: selectedLanguage,
-          }).catch(() => {
-            // User dismissed or already installed — that's fine
-          });
+          }).catch(() => {});
         }
       } catch {
-        // supportsOnDeviceRecognition not available — skip
+        // Not available — skip
       }
     }
     checkOfflineModel();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── expo-speech-recognition event hooks ──────────────────────────────────
+  // Speak greeting on mount
+  useEffect(() => {
+    const greeting = t('voice.greeting');
+    const langCode = selectedLanguage.split('-')[0];
+    setTimeout(() => {
+      Speech.speak(greeting, { language: langCode, rate: 0.9 });
+    }, 800);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Speech recognition events ────────────────────────────────────────────
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
     setError('');
@@ -90,7 +99,6 @@ export default function VoiceScreen() {
     if (event.results && event.results.length > 0) {
       const latestTranscript = event.results[0]?.transcript ?? '';
       if (event.isFinal) {
-        // Final result — append to existing transcription
         setTranscription((prev) => {
           if (!prev.trim()) return latestTranscript;
           return `${prev} ${latestTranscript}`;
@@ -101,7 +109,6 @@ export default function VoiceScreen() {
 
   useSpeechRecognitionEvent('error', (event) => {
     console.error('[Voice] Error:', event.error, event.message);
-    // Don't show "no-speech" as an error — user just didn't say anything
     if (event.error === 'no-speech') {
       setIsListening(false);
       return;
@@ -110,7 +117,7 @@ export default function VoiceScreen() {
     setIsListening(false);
   });
 
-  // Pulse animation when listening
+  // Pulse animation
   useEffect(() => {
     if (isListening) {
       const pulse = Animated.loop(
@@ -126,25 +133,22 @@ export default function VoiceScreen() {
     }
   }, [isListening, pulseAnim]);
 
-  // ─── Language change ──────────────────────────────────────────────────────
+  // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleLanguageChange = (langCode: string, appCode: string) => {
     setSelectedLanguage(langCode);
     setLanguage(appCode);
     i18n.changeLanguage(appCode);
   };
 
-  // ─── Voice — TAP TO TOGGLE ────────────────────────────────────────────────
   const toggleListening = async () => {
     setError('');
     Keyboard.dismiss();
 
     if (isListening) {
-      // Currently listening → stop
       ExpoSpeechRecognitionModule.stop();
       return;
     }
 
-    // Not listening → request permissions and start
     try {
       const permResult = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!permResult.granted) {
@@ -152,24 +156,18 @@ export default function VoiceScreen() {
         return;
       }
 
-      // Start speech recognition — prefer on-device for offline use
       ExpoSpeechRecognitionModule.start({
         lang: selectedLanguage,
         interimResults: false,
         maxAlternatives: 1,
         continuous: false,
         addsPunctuation: true,
-        // Use on-device recognition for fully offline operation.
-        // Falls back to cloud if on-device model isn't installed.
         requiresOnDeviceRecognition: true,
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('[Voice] start error:', msg);
-
-      // If on-device recognition failed, retry without it (cloud fallback)
+      // Fallback to cloud if on-device not available
       if (msg.includes('on-device') || msg.includes('not available')) {
-        console.warn('[Voice] On-device not available, trying cloud recognition');
         try {
           ExpoSpeechRecognitionModule.start({
             lang: selectedLanguage,
@@ -180,8 +178,8 @@ export default function VoiceScreen() {
             requiresOnDeviceRecognition: false,
           });
           return;
-        } catch (fallbackErr) {
-          const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+        } catch (fbErr) {
+          const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
           setError(t('voice.startFailed') + `: ${fbMsg}`);
         }
       } else {
@@ -194,6 +192,7 @@ export default function VoiceScreen() {
   const clearTranscription = () => {
     setTranscription('');
     setError('');
+    setIsFollowUp(false);
   };
 
   const submitToAI = () => {
@@ -201,12 +200,23 @@ export default function VoiceScreen() {
       setError(t('voice.noSymptoms'));
       return;
     }
+
+    // Save user message to conversation history
+    addMessage({
+      role: 'user',
+      text: transcription.trim(),
+      timestamp: Date.now(),
+      category,
+    });
+
     router.push({
       pathname: '/(main)/result' as Href,
       params: {
         symptoms: transcription.slice(0, MAX_CHARS),
         language: selectedLanguage,
         inputMode,
+        category,
+        isFollowUp: isFollowUp ? 'true' : 'false',
       },
     });
   };
@@ -217,15 +227,17 @@ export default function VoiceScreen() {
 
   const charCount = transcription.length;
   const isOverLimit = charCount > MAX_CHARS;
+  const hasRecentCase = conversationHistory.length > 0;
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header + Greeting */}
+        {/* Header */}
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.appName}>🩺 DermaSeva</Text>
@@ -236,22 +248,52 @@ export default function VoiceScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Inline Setup — Language + Worker Type */}
+        {/* Category Selector */}
+        <Text style={styles.sectionLabel}>{t('category.title')}</Text>
+        <View style={styles.categoryRow}>
+          {CATEGORIES.map((cat) => (
+            <TouchableOpacity
+              key={cat.key}
+              style={[styles.categoryChip, category === cat.key && styles.categoryChipSelected]}
+              onPress={() => setCategory(cat.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
+              <Text style={[styles.categoryText, category === cat.key && styles.categoryTextSelected]}>
+                {t(cat.labelKey)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Follow-up toggle — if previous case exists */}
+        {hasRecentCase && (
+          <TouchableOpacity
+            style={[styles.followUpBanner, isFollowUp && styles.followUpBannerActive]}
+            onPress={() => setIsFollowUp(!isFollowUp)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.followUpText}>
+              {isFollowUp ? '🔄 ' + t('voice.followUpActive') : '💬 ' + t('voice.followUpAvailable')}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Settings toggle */}
         <TouchableOpacity
           style={styles.setupToggle}
-          onPress={() => setShowSetup(!showSetup)}
+          onPress={() => setShowSettings(!showSettings)}
           activeOpacity={0.7}
         >
           <Text style={styles.setupToggleText}>
             ⚙️ {VOICE_LANGUAGES.find(l => l.code === selectedLanguage)?.label ?? 'English'}
             {workerType ? ` • ${t(`workerType.${workerType}`)}` : ''}
           </Text>
-          <Text style={styles.setupChevron}>{showSetup ? '▲' : '▼'}</Text>
+          <Text style={styles.setupChevron}>{showSettings ? '▲' : '▼'}</Text>
         </TouchableOpacity>
 
-        {showSetup && (
+        {showSettings && (
           <View style={styles.setupContainer}>
-            {/* Language */}
             <Text style={styles.setupLabel}>{t('voice.language')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.langScroll}>
               <View style={styles.langRow}>
@@ -268,27 +310,10 @@ export default function VoiceScreen() {
                 ))}
               </View>
             </ScrollView>
-
-            {/* Worker Type */}
-            <Text style={[styles.setupLabel, { marginTop: 14 }]}>{t('voice.profession')}</Text>
-            <View style={styles.workerRow}>
-              {WORKER_TYPES.map((wt) => (
-                <TouchableOpacity
-                  key={wt.key}
-                  style={[styles.workerChip, workerType === wt.key && styles.workerChipSelected]}
-                  onPress={() => setWorkerType(wt.key)}
-                >
-                  <Text style={styles.workerEmoji}>{wt.emoji}</Text>
-                  <Text style={[styles.workerText, workerType === wt.key && styles.workerTextSelected]}>
-                    {t(`workerType.${wt.key}`)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
           </View>
         )}
 
-        {/* Input Mode Toggle */}
+        {/* Mode Toggle */}
         <View style={styles.modeToggleContainer}>
           <TouchableOpacity
             style={[styles.modeToggle, inputMode === 'voice' && styles.modeToggleActive]}
@@ -308,10 +333,12 @@ export default function VoiceScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Symptoms Transcript — Editable */}
+        {/* Transcript / Input */}
         <View style={styles.transcriptionContainer}>
           <View style={styles.transcriptHeader}>
-            <Text style={styles.label}>{t('voice.transcript')}</Text>
+            <Text style={styles.label}>
+              {isFollowUp ? t('voice.followUpLabel') : t('voice.transcript')}
+            </Text>
             {transcription.length > 0 && (
               <TouchableOpacity onPress={clearTranscription}>
                 <Text style={styles.clearBtn}>{t('voice.clear')}</Text>
@@ -319,11 +346,12 @@ export default function VoiceScreen() {
             )}
           </View>
           <TextInput
-            style={[
-              styles.transcriptInput,
-              isOverLimit && styles.transcriptInputError,
-            ]}
-            placeholder={t('voice.placeholder')}
+            style={[styles.transcriptInput, isOverLimit && styles.transcriptInputError]}
+            placeholder={
+              isFollowUp
+                ? t('voice.followUpPlaceholder')
+                : t(`voice.placeholder.${category}`) || t('voice.placeholder')
+            }
             placeholderTextColor="#b0aeaa"
             value={transcription}
             onChangeText={setTranscription}
@@ -340,7 +368,7 @@ export default function VoiceScreen() {
         </View>
       </ScrollView>
 
-      {/* Bottom Actions — Fixed */}
+      {/* Bottom Actions */}
       <View style={styles.bottomActions}>
         {inputMode === 'voice' && (
           <Animated.View style={[styles.micContainer, { transform: [{ scale: pulseAnim }] }]}>
@@ -358,15 +386,14 @@ export default function VoiceScreen() {
         )}
 
         <TouchableOpacity
-          style={[
-            styles.submitButton,
-            (!transcription.trim() || isOverLimit) && styles.submitButtonDisabled,
-          ]}
+          style={[styles.submitButton, (!transcription.trim() || isOverLimit) && styles.submitButtonDisabled]}
           onPress={submitToAI}
           disabled={!transcription.trim() || isOverLimit}
           activeOpacity={0.8}
         >
-          <Text style={styles.submitButtonText}>{t('voice.analyze')}</Text>
+          <Text style={styles.submitButtonText}>
+            {isFollowUp ? t('voice.askFollowUp') : t('voice.analyze')}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -378,7 +405,6 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 8 },
 
-  // Header
   headerRow: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
     marginBottom: 16,
@@ -393,7 +419,33 @@ const styles = StyleSheet.create({
   },
   historyBtnText: { fontSize: 22 },
 
-  // Setup section
+  // Section labels
+  sectionLabel: {
+    fontSize: 12, fontWeight: '700', color: '#7a7974',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
+  },
+
+  // Category chips
+  categoryRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  categoryChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12, borderRadius: 14,
+    backgroundColor: '#fff', borderWidth: 2, borderColor: '#e5e0da',
+  },
+  categoryChipSelected: { borderColor: '#01696f', backgroundColor: '#e6f5f5' },
+  categoryEmoji: { fontSize: 18 },
+  categoryText: { fontSize: 13, fontWeight: '600', color: '#5a5852' },
+  categoryTextSelected: { color: '#01696f', fontWeight: '700' },
+
+  // Follow-up
+  followUpBanner: {
+    backgroundColor: '#fef9ee', borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: '#e8dcc8', marginBottom: 12,
+  },
+  followUpBannerActive: { backgroundColor: '#e6f5f5', borderColor: '#01696f' },
+  followUpText: { fontSize: 14, color: '#5a5852', fontWeight: '600', textAlign: 'center' },
+
+  // Settings
   setupToggle: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 12, padding: 14,
@@ -405,9 +457,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', borderRadius: 12, padding: 14,
     borderWidth: 1, borderColor: '#e5e0da', marginBottom: 12,
   },
-  setupLabel: { fontSize: 12, fontWeight: '700', color: '#7a7974', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-
-  // Language chips
+  setupLabel: {
+    fontSize: 12, fontWeight: '700', color: '#7a7974',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
+  },
   langScroll: { flexGrow: 0 },
   langRow: { flexDirection: 'row', gap: 8 },
   langChip: {
@@ -418,26 +471,6 @@ const styles = StyleSheet.create({
   langText: { fontSize: 13, color: '#5a5852' },
   langTextSelected: { color: '#fff', fontWeight: '700' },
 
-  // Worker type chips
-  workerRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  workerChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#f3f0ec', borderWidth: 1, borderColor: '#e5e0da',
-  },
-  workerChipSelected: { backgroundColor: '#01696f', borderColor: '#01696f' },
-  workerEmoji: { fontSize: 16 },
-  workerText: { fontSize: 13, color: '#5a5852' },
-  workerTextSelected: { color: '#fff', fontWeight: '700' },
-
-  // Inputs
-  inputContainer: { marginBottom: 12 },
-  label: { fontSize: 12, fontWeight: '700', color: '#7a7974', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#e5e0da', fontSize: 16, color: '#28251d',
-  },
-
   // Mode toggle
   modeToggleContainer: {
     flexDirection: 'row', gap: 0, marginBottom: 12,
@@ -446,13 +479,24 @@ const styles = StyleSheet.create({
   modeToggle: {
     flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10,
   },
-  modeToggleActive: { backgroundColor: '#fff', shadowColor: '#28251d', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 },
+  modeToggleActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#28251d', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1, shadowRadius: 3, elevation: 2,
+  },
   modeToggleText: { fontSize: 15, color: '#7a7974', fontWeight: '600' },
   modeToggleTextActive: { color: '#01696f', fontWeight: '700' },
 
   // Transcript
   transcriptionContainer: { flex: 1, marginBottom: 8 },
-  transcriptHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  transcriptHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 6,
+  },
+  label: {
+    fontSize: 12, fontWeight: '700', color: '#7a7974',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
   clearBtn: { fontSize: 14, color: '#a12c7b', fontWeight: '600' },
   transcriptInput: {
     backgroundColor: '#fff', borderRadius: 12, padding: 14,
@@ -465,7 +509,7 @@ const styles = StyleSheet.create({
   charCountError: { color: '#e74c3c', fontWeight: '700' },
   errorText: { color: '#e74c3c', marginTop: 6, fontSize: 13 },
 
-  // Bottom actions
+  // Bottom
   bottomActions: {
     padding: 16, paddingTop: 8, gap: 10,
     borderTopWidth: 1, borderTopColor: '#e6e4df',
