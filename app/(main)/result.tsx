@@ -129,16 +129,16 @@ export default function ResultScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelHookError]);
 
-  // Timeout fallback — if model isn't ready after 15s, use mock
+  // Timeout fallback — if model isn't ready after 8s, use mock
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (!hasStartedAnalysis.current) {
         hasStartedAnalysis.current = true;
-        console.warn('[Result] Model load timeout (15s), falling back to mock');
-        setModelError('Model load timed out after 15 seconds');
+        console.warn('[Result] Model load timeout (8s), falling back to mock');
+        setModelError('Model load timed out — using demo mode');
         runAnalysis(true);
       }
-    }, 15000);
+    }, 8000);
     return () => clearTimeout(timeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -342,11 +342,25 @@ export default function ResultScreen() {
       <SafeAreaView style={styles.centered}>
         <ActivityIndicator size="large" color="#01696f" />
         <Text style={styles.loadingText}>
-          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing symptoms…'}
+          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing with AI…'}
         </Text>
         <Text style={styles.loadingSubtext}>
-          {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Initializing on-device AI engine'}
+          {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Preparing on-device AI engine'}
         </Text>
+        {inferenceState === 'loading_model' && (
+          <TouchableOpacity
+            style={[styles.btn, { marginTop: 24, backgroundColor: '#7a7974' }]}
+            onPress={() => {
+              if (!hasStartedAnalysis.current) {
+                hasStartedAnalysis.current = true;
+                setModelError('Skipped — using demo mode');
+                runAnalysis(true);
+              }
+            }}
+          >
+            <Text style={styles.btnText}>Skip → Use Demo Mode</Text>
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
     );
   }

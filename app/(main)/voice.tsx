@@ -53,25 +53,32 @@ export default function VoiceScreen() {
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
+  const [speechModelStatus, setSpeechModelStatus] = useState<'checking' | 'available' | 'downloading' | 'unavailable' | null>(null);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
 
-  // Check if on-device speech model is available
-  useEffect(() => {
-    async function checkOfflineModel() {
-      try {
-        const onDeviceAvailable = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
-        if (onDeviceAvailable) {
-          ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
-            locale: selectedLanguage,
-          }).catch(() => {});
-        }
-      } catch {
-        // Not available — skip
+  // Check if on-device speech model is available for the selected language
+  const checkAndDownloadSpeechModel = async (locale: string) => {
+    setSpeechModelStatus('checking');
+    try {
+      const supported = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
+      if (!supported) {
+        setSpeechModelStatus('unavailable');
+        return;
       }
+      setSpeechModelStatus('downloading');
+      await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale });
+      setSpeechModelStatus('available');
+    } catch {
+      // User dismissed download dialog or already installed
+      setSpeechModelStatus('available');
     }
-    checkOfflineModel();
+  };
+
+  // Check on mount for current language
+  useEffect(() => {
+    checkAndDownloadSpeechModel(selectedLanguage);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -138,6 +145,8 @@ export default function VoiceScreen() {
     setSelectedLanguage(langCode);
     setLanguage(appCode);
     i18n.changeLanguage(appCode);
+    // Trigger offline model download for the new language
+    checkAndDownloadSpeechModel(langCode);
   };
 
   const toggleListening = async () => {
@@ -310,6 +319,18 @@ export default function VoiceScreen() {
                 ))}
               </View>
             </ScrollView>
+          </View>
+        )}
+
+        {/* Speech model status */}
+        {speechModelStatus === 'downloading' && (
+          <View style={[styles.followUpBanner, { backgroundColor: '#fff8e1', borderColor: '#f9a825' }]}>
+            <Text style={styles.followUpText}>⏳ Downloading offline speech model for this language...</Text>
+          </View>
+        )}
+        {speechModelStatus === 'unavailable' && (
+          <View style={[styles.followUpBanner, { backgroundColor: '#fce4ec', borderColor: '#e53935' }]}>
+            <Text style={styles.followUpText}>📡 On-device speech not supported — using cloud recognition</Text>
           </View>
         )}
 
