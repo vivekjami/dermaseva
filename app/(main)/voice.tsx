@@ -210,7 +210,7 @@ export default function VoiceScreen() {
     });
 
     router.push({
-      pathname: '/(main)/result' as Href,
+      pathname: '/(main)/result',
       params: {
         symptoms: transcription.slice(0, MAX_CHARS),
         language: selectedLanguage,
@@ -218,7 +218,7 @@ export default function VoiceScreen() {
         category,
         isFollowUp: isFollowUp ? 'true' : 'false',
       },
-    });
+    } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 
   const navigateToHistory = () => {
