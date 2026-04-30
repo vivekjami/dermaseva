@@ -71,7 +71,7 @@ export default function ResultScreen() {
   const [ragNote, setRagNote] = useState('');
   const [otcOverridden, setOtcOverridden] = useState(false);
   const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
-  const [analysisError, setAnalysisError] = useState('');
+  const [, setAnalysisError] = useState('');
   const [downloadPct, setDownloadPct] = useState(0);
   const hasStartedAnalysis = useRef(false);
 
