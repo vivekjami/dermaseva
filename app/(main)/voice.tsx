@@ -69,9 +69,7 @@ export default function VoiceScreen() {
           setSpeechModelStatus('unavailable');
           return;
         }
-        const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({
-          onDevice: true,
-        });
+        const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
         // locales.locales contains all installed on-device locales
         const installed = new Set<string>(
           (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
@@ -109,7 +107,7 @@ export default function VoiceScreen() {
     try {
       await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale });
       // After download dialog closes, re-check installed locales
-      const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({ onDevice: true });
+      const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
       const installed = new Set<string>(
         (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
       );
