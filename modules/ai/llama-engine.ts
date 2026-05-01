@@ -196,32 +196,16 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
         { role: 'system', content: systemPrompt },
         { role: 'user', content: input.prompt },
       ],
+      jinja: true,              // Required for messages API with Gemma 4 chat template
+      enable_thinking: false,   // Disable thinking blocks — we need pure JSON output
       n_predict: 512,
-      n_threads: 4,         // Ensure all cores used per completion
-      temperature: 0.1,     // Deterministic JSON output
+      n_threads: 4,             // All CPU cores per completion
+      temperature: 0.1,         // Deterministic JSON output
       top_k: 40,
       top_p: 0.95,
       min_p: 0.05,
-      penalty_repeat: 1.1,  // Slight repeat penalty to prevent token loops
-      seed: 42,             // Fixed seed for reproducible output
-      // json_schema enforces valid JSON grammar — eliminates all parse failures
-      json_schema: JSON.stringify({
-        type: 'object',
-        required: ['conditionName', 'confidence', 'severity', 'keySigns', 'actionSteps', 'doctorReferral', 'needsUrgentReferral'],
-        properties: {
-          conditionName: { type: 'string' },
-          confidence: { type: 'number', minimum: 0, maximum: 1 },
-          severity: { type: 'string', enum: ['mild', 'moderate', 'severe'] },
-          keySigns: { type: 'array', items: { type: 'string' } },
-          actionSteps: { type: 'array', items: { type: 'string' } },
-          otcSuggestion: { type: ['string', 'null'] },
-          doctorReferral: { type: 'string' },
-          needsUrgentReferral: { type: 'boolean' },
-          guidelineSource: { type: ['string', 'null'] },
-          followUpPlan: { type: ['string', 'null'] },
-        },
-        additionalProperties: false,
-      }),
+      penalty_repeat: 1.1,      // Prevent token loops
+      seed: 42,                 // Reproducible output
       stop: STOP_WORDS,
     });
 

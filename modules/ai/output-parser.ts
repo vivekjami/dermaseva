@@ -21,7 +21,7 @@ export interface ParsedResult {
 const DEFAULT_REFERRAL =
   'Please visit your nearest Primary Health Centre (PHC) for a proper examination.';
 
-const CONFIDENCE_THRESHOLD = 0.55;
+const CONFIDENCE_THRESHOLD = 0.30; // Only fall back for truly unusable output; Gemma 4 E2B tends to score 0.3-0.7
 const VALID_SEVERITIES = new Set(['mild', 'moderate', 'severe']);
 
 // ── Condition name normalization ──────────────────────────────────────────────
@@ -89,8 +89,9 @@ function normalizeConditionName(raw: string): string {
 }
 
 export function parseModelOutput(rawText: string): ParsedResult {
-  // Step 1: Strip markdown code fences
+  // Step 1: Strip Gemma 4 thinking blocks and markdown code fences
   const cleaned = rawText
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '') // Remove Gemma 4 thinking blocks
     .replace(/```json/gi, '')
     .replace(/```/g, '')
     .trim();

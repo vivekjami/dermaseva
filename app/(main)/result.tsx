@@ -278,10 +278,10 @@ export default function ResultScreen() {
 
       // 6. Parse and validate
       let parsed = parseModelOutput(rawText);
-      
-      // If the model generated garbage/invalid JSON, use the mock fallback immediately
-      if (parsed.isLowConfidence && !useMock) {
-        console.warn('[Result] Llama generated low confidence / invalid output, falling back to mock.');
+
+      // Only fall back to mock if parsing COMPLETELY failed (no valid JSON at all)
+      if (parsed.parseError && !useMock) {
+        console.warn('[Result] AI returned unparseable output, falling back to guidelines:', parsed.parseError);
         setInferenceSource('mock');
         const mockOutput = runMockInference({ prompt: fullPrompt, language: voiceLang ?? appLanguage ?? 'en' });
         rawText = mockOutput.rawText;
