@@ -95,6 +95,10 @@ export function isModelLoaded(): boolean {
   return _context !== null;
 }
 
+export function isModelLoading(): boolean {
+  return _isLoading;
+}
+
 export async function loadModel(): Promise<boolean> {
   if (_context !== null) return true;
   if (_loadPromise !== null) return _loadPromise;

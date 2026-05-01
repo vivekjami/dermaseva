@@ -13,7 +13,6 @@ import { getHistory, saveHistory, buildHistoryContext } from '@/modules/db/patie
 import {
   runInference, runMockInference,
   isModelLoaded, isModelDownloaded, loadModel,
-  MODEL_SIZE_BYTES,
 } from '@/modules/ai/llama-engine';
 
 import { buildPrompt } from '@/modules/ai/prompt-builder';
@@ -32,7 +31,6 @@ import { saveCase, getCaseById } from '@/modules/db/case-store';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
 type InferenceState =
-  | 'downloading'
   | 'loading_model'
   | 'running'
   | 'done'
@@ -42,12 +40,6 @@ type InferenceSource = 'llama' | 'mock';
 
 const SEVERITY_COLORS = { mild: '#437a22', moderate: '#da7101', severe: '#a12c7b' };
 const SEVERITY_BG    = { mild: '#d4dfcc', moderate: '#e7d7c4', severe: '#e0ced7' };
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 export default function ResultScreen() {
   const { caseId, symptoms, language: voiceLang, inputMode: rawInputMode, category: rawCategory, isFollowUp: rawFollowUp } = useLocalSearchParams<{
@@ -73,7 +65,6 @@ export default function ResultScreen() {
   const [otcOverridden, setOtcOverridden] = useState(false);
   const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
   const [, setAnalysisError] = useState('');
-  const [downloadPct, setDownloadPct] = useState(0);
   const hasStartedAnalysis = useRef(false);
 
   // ─── Load from history flow ───────────────────────────────────────────────
@@ -357,33 +348,6 @@ export default function ResultScreen() {
       setAnalysisError(msg);
       setInferenceState('error');
     }
-  }
-
-  // ── Downloading ──────────────────────────────────────────────────────────
-  if (inferenceState === 'downloading') {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorIcon}>⬇️</Text>
-        <Text style={styles.errorTitle}>
-          {downloadPct > 0 ? 'Downloading Gemma 4 E2B…' : 'Preparing AI Model…'}
-        </Text>
-        {downloadPct > 0 && (
-          <>
-            <Text style={styles.loadingSubtext}>
-              {formatBytes((downloadPct / 100) * MODEL_SIZE_BYTES)} / {formatBytes(MODEL_SIZE_BYTES)}
-            </Text>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${downloadPct}%` }]} />
-            </View>
-            <Text style={styles.progressPct}>{downloadPct}%</Text>
-          </>
-        )}
-        {downloadPct === 0 && <ActivityIndicator size="large" color="#01696f" style={{ marginTop: 16 }} />}
-        <Text style={styles.loadingSubtext}>
-          Keep the app open. Do not close or lock your screen.
-        </Text>
-      </SafeAreaView>
-    );
   }
 
   // ── Loading / Analyzing ───────────────────────────────────────────────────
