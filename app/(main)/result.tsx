@@ -103,7 +103,7 @@ export default function ResultScreen() {
     })();
   }, [caseId]);
 
-  // ─── Single clean flow: use model if ready, else guideline engine ──────────
+  // ─── Single clean flow: always try AI first, only fall back if truly unavailable ────
   useEffect(() => {
     if (caseId || !symptoms || hasStartedAnalysis.current) return;
     hasStartedAnalysis.current = true;
@@ -111,35 +111,42 @@ export default function ResultScreen() {
     (async () => {
       try {
         if (isModelLoaded()) {
-          // Model already loaded from background preload — use it
+          // Model already loaded — use it immediately
           console.warn('[Result] Model already loaded, running AI inference.');
           await runAnalysis(false);
+          return;
+        }
+
+        // Model is loading in background (_layout.tsx started it) OR downloaded but not started
+        const downloaded = await isModelDownloaded();
+        if (!downloaded) {
+          // Truly not available — use guidelines immediately
+          console.warn('[Result] Model not downloaded, using guideline analysis.');
+          await runAnalysis(true);
+          return;
+        }
+
+        // Model is downloaded. loadModel() is idempotent — if already loading,
+        // it returns the SAME shared promise started by _layout.tsx.
+        // We just await it — no artificial timeout.
+        console.warn('[Result] Waiting for model to finish loading...');
+        setInferenceState('loading_model');
+
+        const loaded = await loadModel(); // waits for existing load or starts one
+
+        if (loaded) {
+          console.warn('[Result] Model ready, running AI inference.');
+          await runAnalysis(false);
         } else {
-          // Model not loaded yet — check if it's downloaded and try a quick load
-          const downloaded = await isModelDownloaded();
-          if (downloaded) {
-            console.warn('[Result] Model downloaded but not loaded, trying quick load (15s)...');
-            setInferenceState('loading_model');
-            const loaded = await Promise.race([
-              loadModel(),
-              new Promise<boolean>(r => setTimeout(() => r(false), 15_000)),
-            ]);
-            if (loaded) {
-              console.warn('[Result] Quick load succeeded!');
-              await runAnalysis(false);
-              return;
-            }
-          }
-          // Not downloaded or quick load failed — use knowledge base immediately
-          console.warn('[Result] Using guideline-based analysis.');
+          console.warn('[Result] Model load failed, using guideline analysis.');
           await runAnalysis(true);
         }
       } catch (e: unknown) {
-        console.error('[Result] Top-level error, falling back to mock:', e);
+        console.error('[Result] Top-level error, falling back to guidelines:', e);
         try {
           await runAnalysis(true);
         } catch (fallbackErr) {
-          console.error('[Result] Even mock fallback failed:', fallbackErr);
+          console.error('[Result] Even guideline fallback failed:', fallbackErr);
           setInferenceState('error');
         }
       }
