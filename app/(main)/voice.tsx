@@ -136,13 +136,19 @@ export default function VoiceScreen() {
     try {
       await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale });
     } catch {
-      // androidTriggerOfflineModelDownload failed — open settings manually
+      // androidTriggerOfflineModelDownload failed — guide user to settings
+      const baseLang = locale.split('-')[0];
+      const langName = { te: 'Telugu', ta: 'Tamil', kn: 'Kannada', mr: 'Marathi', hi: 'Hindi' }[baseLang] || locale;
       Alert.alert(
-        'Download Offline Language',
-        'Go to Google Voice Settings → Offline Speech Recognition and download the language pack.',
+        `Download ${langName} Offline Model`,
+        `To enable offline speech recognition for ${langName}:\n\n` +
+        `1. Open Settings → Google → Text-to-Speech\n` +
+        `2. Or go to Settings → Languages & Input → Speech → Offline Speech Recognition\n` +
+        `3. Download the ${langName} language pack\n\n` +
+        `Note: Some languages may only work with an internet connection.`,
         [
           { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Use Online', style: 'cancel', onPress: () => setSpeechModelStatus('available') },
         ]
       );
     }
@@ -244,13 +250,16 @@ export default function VoiceScreen() {
         return;
       }
 
+      // Try on-device first for the selected language
+      const hasOffline = isLocaleInstalled(selectedLanguage, installedLocales);
+
       ExpoSpeechRecognitionModule.start({
         lang: selectedLanguage,
         interimResults: false,
         maxAlternatives: 1,
         continuous: false,
         addsPunctuation: true,
-        requiresOnDeviceRecognition: true,
+        requiresOnDeviceRecognition: hasOffline, // Only require offline if we know it's available
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

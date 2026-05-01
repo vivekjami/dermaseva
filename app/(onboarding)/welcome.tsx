@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type WorkerType } from '@/store/app-store';
+import { isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
 
 const LANGUAGES = [
   { label: 'English', code: 'en', native: 'English' },
@@ -34,6 +35,8 @@ export default function WelcomeScreen() {
   const [step, setStep] = useState<Step>('language');
   const [selectedLang, setSelectedLang] = useState(language);
   const [selectedRole, setSelectedRole] = useState<WorkerType | null>(workerType);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadPct, setDownloadPct] = useState(0);
   const fadeAnim = React.useRef(new Animated.Value(1)).current;
 
   const animateTransition = (nextStep: Step) => {
@@ -55,10 +58,65 @@ export default function WelcomeScreen() {
     setWorkerType(role);
   };
 
-  const handleGetStarted = () => {
-    if (!selectedRole) return;
+  const goToMain = () => {
     setOnboardingComplete(true);
     router.replace('/(main)/voice' as Href);
+    // Start model loading in background
+    loadModel().catch(e => console.warn('[Welcome] Background model load error:', e));
+  };
+
+  const handleGetStarted = async () => {
+    if (!selectedRole) return;
+
+    try {
+      const downloaded = await isModelDownloaded();
+      if (downloaded) {
+        // Model already present — go straight to main screen
+        goToMain();
+        return;
+      }
+
+      // Model not downloaded — ask user
+      Alert.alert(
+        '📥 Download AI Model?',
+        'DermaSeva uses an on-device AI model (~3 GB) for accurate diagnosis. ' +
+        'Without it, the app will use guideline-based analysis only.\n\n' +
+        'You can always download it later from the voice screen.',
+        [
+          {
+            text: 'Download Now',
+            onPress: () => startModelDownload(),
+          },
+          {
+            text: 'Skip for Now',
+            style: 'cancel',
+            onPress: () => goToMain(),
+          },
+        ]
+      );
+    } catch {
+      // If check fails, just proceed
+      goToMain();
+    }
+  };
+
+  const startModelDownload = async () => {
+    setIsDownloading(true);
+    setDownloadPct(0);
+    try {
+      const success = await downloadModel((p) => {
+        setDownloadPct(p.percentage);
+      });
+      if (success) {
+        goToMain();
+      } else {
+        Alert.alert('Download Failed', 'Could not download the AI model. You can try again from the voice screen.');
+        goToMain();
+      }
+    } catch {
+      Alert.alert('Download Error', 'An error occurred. You can try again later.');
+      goToMain();
+    }
   };
 
   return (
@@ -133,24 +191,38 @@ export default function WelcomeScreen() {
                 ))}
               </View>
 
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={() => animateTransition('language')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.backButtonText}>← {t('welcome.back') || 'Back'}</Text>
-                </TouchableOpacity>
+              {isDownloading ? (
+                <View style={styles.downloadContainer}>
+                  <Text style={styles.downloadText}>
+                    ⬇️ Downloading AI Model… {downloadPct}%
+                  </Text>
+                  <View style={styles.downloadBarBg}>
+                    <View style={[styles.downloadBarFill, { width: `${downloadPct}%` }]} />
+                  </View>
+                  <Text style={styles.downloadHint}>
+                    Please keep the app open. This may take a few minutes.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => animateTransition('language')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.backButtonText}>← {t('welcome.back') || 'Back'}</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.startButton, !selectedRole && styles.startButtonDisabled]}
-                  onPress={handleGetStarted}
-                  disabled={!selectedRole}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.startButtonText}>{t('welcome.getStarted') || 'Get Started'} 🚀</Text>
-                </TouchableOpacity>
-              </View>
+                  <TouchableOpacity
+                    style={[styles.startButton, !selectedRole && styles.startButtonDisabled]}
+                    onPress={handleGetStarted}
+                    disabled={!selectedRole}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.startButtonText}>{t('welcome.getStarted') || 'Get Started'} 🚀</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </>
           )}
         </Animated.View>
@@ -221,4 +293,17 @@ const styles = StyleSheet.create({
   },
   startButtonDisabled: { backgroundColor: '#bab9b4', shadowOpacity: 0 },
   startButtonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+
+  downloadContainer: {
+    marginTop: 28, padding: 20, backgroundColor: '#e6f5f5',
+    borderRadius: 14, borderWidth: 1, borderColor: '#01696f',
+    alignItems: 'center',
+  },
+  downloadText: { fontSize: 16, fontWeight: '700', color: '#01696f', marginBottom: 12 },
+  downloadBarBg: {
+    width: '100%', height: 8, backgroundColor: '#cde8e8',
+    borderRadius: 4, overflow: 'hidden',
+  },
+  downloadBarFill: { height: 8, backgroundColor: '#01696f', borderRadius: 4 },
+  downloadHint: { fontSize: 13, color: '#5a5852', marginTop: 10, textAlign: 'center' },
 });
