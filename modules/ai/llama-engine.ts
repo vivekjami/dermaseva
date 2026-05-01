@@ -33,6 +33,7 @@ const STOP_WORDS = ['</s>', '<end_of_turn>', '<|end|>', '<|eot_id|>', '<|im_end|
 
 export interface InferenceInput {
   prompt: string;
+  language?: string; // e.g. 'te-IN', 'hi', 'en' — for language-specific system prompt
 }
 
 export interface InferenceOutput {
@@ -134,9 +135,10 @@ export async function loadModel(): Promise<boolean> {
     // Race against a timeout to prevent the app from hanging/crashing
     const loadPromise = initLlama({
       model: nativePath,
-      n_ctx: 8192,        // Unrestricted — let the model use full memory
+      n_ctx: 4096,        // 4096 is the right balance — 8192 KV cache is too slow on mobile
+      n_threads: 4,       // Use all CPU cores for maximum inference speed
       n_gpu_layers: 0,    // CPU-only for max compatibility
-      use_mlock: false,   // Do NOT lock in RAM — let OS manage memory
+      use_mlock: false,   // Let OS manage memory
     });
 
     const timeoutPromise = new Promise<null>((resolve) =>
@@ -179,15 +181,21 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
   const start = Date.now();
   console.warn(`[LlamaEngine] Sending prompt (${input.prompt.length} chars)`);
 
+  // Build a language-aware system prompt if language is specified
+  const langName = getLangName(input.language);
+  const systemPrompt = langName !== 'English'
+    ? SYSTEM_PROMPT + `\n- CRITICAL: You MUST respond in ${langName}. All text in actionSteps, doctorReferral, keySigns, and followUpPlan must be written in ${langName} script.`
+    : SYSTEM_PROMPT;
+
   try {
     const result = await _context.completion({
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: input.prompt },
       ],
       n_predict: 512,
-      temperature: 0.1,     // Low temperature for strict JSON output
-      top_k: 40,            // More deterministic
+      temperature: 0.1,   // Deterministic for strict JSON output
+      top_k: 40,
       top_p: 0.95,
       stop: STOP_WORDS,
     });
@@ -200,6 +208,17 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`[LlamaEngine] Inference failed: ${msg}`);
   }
+}
+
+// Map language code to display name for system prompt injection
+function getLangName(lang?: string): string {
+  if (!lang) return 'English';
+  const base = lang.split('-')[0].toLowerCase();
+  const map: Record<string, string> = {
+    en: 'English', hi: 'Hindi', te: 'Telugu',
+    ta: 'Tamil', kn: 'Kannada', mr: 'Marathi',
+  };
+  return map[base] ?? 'English';
 }
 
 export async function unloadModel(): Promise<void> {
@@ -217,23 +236,44 @@ export function isNativeBridgeAvailable(): boolean {
 
 // ─── Mock fallback — powered by knowledge base (25+ conditions) ───────────────
 
+// Localized referral messages for guideline-based mode
+const REFERRAL_TRANSLATIONS: Record<string, string> = {
+  en: 'Please visit your nearest Primary Health Centre (PHC) for a proper examination.',
+  hi: 'कृपया उचित जांच के लिए अपने नजदीकी प्राथमिक स्वास्थ्य केंद्र (PHC) जाएं।',
+  te: 'దయచేసి సరైన పరీక్ష కోసం మీ సమీప ప్రాథమిక ఆరోగ్య కేంద్రాన్ని (PHC) సందర్శించండి.',
+  ta: 'சரியான பரிசோதனைக்கு உங்கள் அருகிலுள்ள முதன்மை சுகாதார மையத்தை (PHC) பார்க்கவும்.',
+  kn: 'ಸರಿಯಾದ ಪರೀಕ್ಷೆಗಾಗಿ ದಯವಿಟ್ಟು ನಿಮ್ಮ ಹತ್ತಿರದ ಪ್ರಾಥಮಿಕ ಆರೋಗ್ಯ ಕೇಂದ್ರಕ್ಕೆ (PHC) ಭೇಟಿ ನೀಡಿ.',
+  mr: 'कृपया योग्य तपासणीसाठी आपल्या जवळच्या प्राथमिक आरोग्य केंद्राला (PHC) भेट द्या.',
+};
+
+const FOLLOWUP_TRANSLATIONS: Record<string, string> = {
+  en: 'Monitor for 2–3 days, revisit PHC if no improvement.',
+  hi: '2-3 दिन निगरानी करें, सुधार न होने पर PHC दोबारा जाएं।',
+  te: '2-3 రోజులు పర్యవేక్షించండి, మెరుగుదల కనుగొనకపోతే PHCకి తిరిగి వెళ్ళండి.',
+  ta: '2-3 நாட்கள் கண்காணிக்கவும், முன்னேற்றம் இல்லை என்றால் PHC-ஐ மீண்டும் பார்க்கவும்.',
+  kn: '2-3 ದಿನ ಗಮನಿಸಿ, ಸುಧಾರಣೆ ಇಲ್ಲದಿದ್ದರೆ PHC ಗೆ ಮತ್ತೆ ಭೇಟಿ ನೀಡಿ.',
+  mr: '2-3 दिवस निरीक्षण करा, सुधारणा न झाल्यास PHC ला पुन्हा भेट द्या.',
+};
+
 export function runMockInference(input: InferenceInput): InferenceOutput {
   const candidates = findCandidateConditions(input.prompt);
+  const langBase = (input.language ?? 'en').split('-')[0].toLowerCase();
+  const referral = REFERRAL_TRANSLATIONS[langBase] ?? REFERRAL_TRANSLATIONS.en;
+  const followUp = FOLLOWUP_TRANSLATIONS[langBase] ?? FOLLOWUP_TRANSLATIONS.en;
 
   if (candidates.length === 0) {
-    // No match at all — generic PHC referral
     return {
       rawText: JSON.stringify({
         conditionName: 'General Health Concern',
         confidence: 0.30,
         severity: 'moderate',
-        keySigns: ['Symptoms described do not match a specific known condition'],
-        actionSteps: ['Document symptoms observed', 'Refer to nearest PHC for examination', 'Follow up within 48 hours'],
+        keySigns: ['Symptoms do not match a specific known condition'],
+        actionSteps: ['Document symptoms', 'Refer to nearest PHC for examination', 'Follow up within 48 hours'],
         otcSuggestion: null,
-        doctorReferral: 'Visit your nearest Primary Health Centre for proper examination.',
+        doctorReferral: referral,
         needsUrgentReferral: false,
         guidelineSource: 'NHM General Protocol',
-        followUpPlan: 'Within 48 hours at PHC',
+        followUpPlan: followUp,
       }),
       inferenceTimeMs: 150 + Math.floor(Math.random() * 100),
     };
@@ -248,12 +288,11 @@ export function runMockInference(input: InferenceInput): InferenceOutput {
       keySigns: best.keySigns,
       actionSteps: best.actionSteps,
       otcSuggestion: best.severity === 'mild' ? best.otc : null,
-      doctorReferral: best.referral,
+      doctorReferral: referral,
       needsUrgentReferral: best.severity === 'severe',
       guidelineSource: best.source,
-      followUpPlan: best.followUp,
+      followUpPlan: followUp,
     }),
     inferenceTimeMs: 200 + Math.floor(Math.random() * 150),
   };
 }
-

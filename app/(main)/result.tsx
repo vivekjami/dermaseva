@@ -246,20 +246,23 @@ export default function ResultScreen() {
 
       if (useMock) {
         setInferenceSource('mock');
-        const mockOutput = runMockInference({ prompt: fullPrompt });
+        const mockOutput = runMockInference({ prompt: fullPrompt, language: voiceLang ?? appLanguage ?? 'en' });
         rawText = mockOutput.rawText;
         elapsed = mockOutput.inferenceTimeMs;
       } else {
         setInferenceSource('llama');
         try {
-          const output = await runInference({ prompt: fullPrompt });
+          const output = await runInference({
+            prompt: fullPrompt,
+            language: voiceLang ?? appLanguage ?? 'en',
+          });
           rawText = output.rawText;
           elapsed = output.inferenceTimeMs;
         } catch (inferenceErr: unknown) {
           const errMsg = inferenceErr instanceof Error ? inferenceErr.message : String(inferenceErr);
           console.error('[Result] Inference failed, falling back to mock:', errMsg);
           setInferenceSource('mock');
-          const mockOutput = runMockInference({ prompt: fullPrompt });
+          const mockOutput = runMockInference({ prompt: fullPrompt, language: voiceLang ?? appLanguage ?? 'en' });
           rawText = mockOutput.rawText;
           elapsed = mockOutput.inferenceTimeMs;
         }
@@ -273,7 +276,7 @@ export default function ResultScreen() {
       if (parsed.isLowConfidence && !useMock) {
         console.warn('[Result] Llama generated low confidence / invalid output, falling back to mock.');
         setInferenceSource('mock');
-        const mockOutput = runMockInference({ prompt: fullPrompt });
+        const mockOutput = runMockInference({ prompt: fullPrompt, language: voiceLang ?? appLanguage ?? 'en' });
         rawText = mockOutput.rawText;
         elapsed += mockOutput.inferenceTimeMs;
         setInferenceMs(elapsed);
