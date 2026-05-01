@@ -135,10 +135,13 @@ export async function loadModel(): Promise<boolean> {
     // Race against a timeout to prevent the app from hanging/crashing
     const loadPromise = initLlama({
       model: nativePath,
-      n_ctx: 4096,        // 4096 is the right balance — 8192 KV cache is too slow on mobile
-      n_threads: 4,       // Use all CPU cores for maximum inference speed
-      n_gpu_layers: 0,    // CPU-only for max compatibility
-      use_mlock: false,   // Let OS manage memory
+      n_ctx: 4096,        // Sweet spot: enough context, manageable KV cache
+      n_batch: 512,       // Max prompt processing batch size
+      n_ubatch: 512,      // Micro-batch aligned with batch for speed
+      n_threads: 4,       // Use all available CPU cores
+      n_gpu_layers: 0,    // CPU-only for Android compatibility
+      use_mmap: true,     // Memory-mapped I/O: fastest load, no RAM duplication
+      use_mlock: false,   // Let OS manage memory paging freely
     });
 
     const timeoutPromise = new Promise<null>((resolve) =>
@@ -194,9 +197,31 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
         { role: 'user', content: input.prompt },
       ],
       n_predict: 512,
-      temperature: 0.1,   // Deterministic for strict JSON output
+      n_threads: 4,         // Ensure all cores used per completion
+      temperature: 0.1,     // Deterministic JSON output
       top_k: 40,
       top_p: 0.95,
+      min_p: 0.05,
+      penalty_repeat: 1.1,  // Slight repeat penalty to prevent token loops
+      seed: 42,             // Fixed seed for reproducible output
+      // json_schema enforces valid JSON grammar — eliminates all parse failures
+      json_schema: JSON.stringify({
+        type: 'object',
+        required: ['conditionName', 'confidence', 'severity', 'keySigns', 'actionSteps', 'doctorReferral', 'needsUrgentReferral'],
+        properties: {
+          conditionName: { type: 'string' },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          severity: { type: 'string', enum: ['mild', 'moderate', 'severe'] },
+          keySigns: { type: 'array', items: { type: 'string' } },
+          actionSteps: { type: 'array', items: { type: 'string' } },
+          otcSuggestion: { type: ['string', 'null'] },
+          doctorReferral: { type: 'string' },
+          needsUrgentReferral: { type: 'boolean' },
+          guidelineSource: { type: ['string', 'null'] },
+          followUpPlan: { type: ['string', 'null'] },
+        },
+        additionalProperties: false,
+      }),
       stop: STOP_WORDS,
     });
 
