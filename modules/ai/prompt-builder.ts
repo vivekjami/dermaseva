@@ -1,6 +1,7 @@
 // Builds the USER message for sendMessage().
 // Handles all 3 categories: skin, child_health, malnutrition.
 // Supports follow-up questions with conversation history context.
+// Now injects candidate conditions from the knowledge base for Gemma to judge.
 
 import type { ConversationMessage, Category } from '@/store/app-store';
 
@@ -12,6 +13,7 @@ export interface PromptInput {
   category: Category;
   isFollowUp?: boolean;
   conversationHistory?: ConversationMessage[];
+  candidateContext?: string; // Pre-formatted candidate conditions from knowledge base
 }
 
 // Language display names for the AI prompt
@@ -56,10 +58,15 @@ export function buildPrompt(input: PromptInput): string {
     prompt += `--- End of previous conversation ---\n\n`;
     prompt += `Follow-up question: ${description}\n`;
   } else {
-    prompt += `\nDescription: ${description}\n`;
+    prompt += `\nSymptoms: ${description}\n`;
   }
 
-  prompt += `\nAnalyze based on Indian NHM and WHO guidelines. Respond in ${langName}. Return the JSON.`;
+  // Inject candidate conditions from knowledge base
+  if (input.candidateContext) {
+    prompt += `\n${input.candidateContext}\n`;
+  }
+
+  prompt += `\nJudge the best matching condition from the candidates above. Use the guideline data provided. Respond in ${langName}. Return ONLY valid JSON — no other text.`;
 
   return prompt;
 }

@@ -34,6 +34,53 @@ Chronic inflammatory skin condition with dry, itchy, inflamed skin.
 Mild cases: Moisturizing cream (non-prescription) applied regularly.
 Refer to PHC for moderate to severe cases or if steroids are needed.
 
+Dry Skin (Xerosis)
+Dry, rough, flaky or cracked skin often due to weather, bathing habits, or low humidity.
+ASHA workers may recommend fragrance-free moisturizing cream or coconut oil applied twice daily.
+Advise patient to avoid harsh soaps, use lukewarm water for bathing, and drink adequate water.
+Refer if cracking, bleeding, or signs of infection develop.
+
+Acne (Pimples)
+Common skin condition with blackheads, whiteheads, pimples on face, chest, or back.
+ASHA workers may advise: wash face twice daily with mild cleanser, do not squeeze pimples.
+Avoid oily cosmetics. Keep hair clean and off face.
+Refer to PHC if severe cystic acne, scarring, or not improving.
+
+Urticaria (Hives / Allergic Rash)
+Raised, itchy, red welts on skin that may appear and disappear within hours.
+Often triggered by food, medicine, insect bites, or contact with allergen.
+ASHA workers should monitor for breathing difficulty or lip/tongue swelling.
+Refer IMMEDIATELY if signs of anaphylaxis (difficulty breathing, swelling of face/throat).
+
+Boils (Furuncles)
+Painful, red, pus-filled bump caused by bacterial infection of hair follicle.
+Apply warm compress several times daily to encourage drainage.
+Keep area clean. Do NOT squeeze or attempt to drain.
+Refer if multiple boils, fever, or on face.
+
+Minor Wounds and Cuts
+Clean wound with clean water. Apply antiseptic (povidone-iodine).
+Cover with clean bandage. Check tetanus vaccination status.
+Refer if deep wound, bleeding won't stop, or signs of infection (redness, pus, fever).
+
+Minor Burns
+Cool under running water for 10-20 minutes immediately.
+Do NOT apply ice, butter, toothpaste, or any home remedy.
+Cover with clean cloth. Give paracetamol for pain.
+Refer if blisters, face/hands/genitals involved, or large area affected.
+
+Dandruff (Seborrheic Dermatitis)
+White or yellow flakes on scalp with mild itching.
+Use anti-dandruff shampoo (ketoconazole or zinc pyrithione) 2-3 times per week.
+Gently massage scalp. Avoid scratching.
+Refer if severe, spreading to face, or not improving after 4 weeks.
+
+Fungal Skin Infection (General)
+Itchy red or discolored patches, often in warm moist areas (groin, between toes, body folds).
+ASHA workers may recommend topical antifungal cream (Clotrimazole or Miconazole) twice daily.
+Keep area clean and dry. Wear loose breathable clothing.
+Refer if extensive, on scalp, or not improving after 4 weeks.
+
 SECTION 2: CONDITIONS REQUIRING IMMEDIATE REFERRAL
 
 Leprosy (Hansen's disease)
@@ -74,3 +121,4 @@ ASHA workers must document:
 - Condition identified
 - Treatment recommended or referral made
 - Follow-up scheduled
+

@@ -13,6 +13,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
+import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
 
 const MAX_CHARS = 1200;
 
@@ -55,9 +56,38 @@ export default function VoiceScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [speechModelStatus, setSpeechModelStatus] = useState<'checking' | 'available' | 'downloading' | 'unavailable' | 'needs_download' | null>(null);
   const [installedLocales, setInstalledLocales] = useState<Set<string>>(new Set());
+  const [aiModelStatus, setAiModelStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
+
+  // Poll AI model status so the pill updates once preloading finishes
+  useEffect(() => {
+    async function checkAiStatus() {
+      try {
+        const downloaded = await isModelDownloaded();
+        if (!downloaded) {
+          setAiModelStatus('not_downloaded');
+          return;
+        }
+        setAiModelStatus(isModelLoaded() ? 'loaded' : 'loading');
+      } catch {
+        setAiModelStatus('not_downloaded');
+      }
+    }
+    checkAiStatus();
+    // Poll every 3s until model is loaded
+    const interval = setInterval(async () => {
+      if (isModelLoaded()) {
+        setAiModelStatus('loaded');
+        clearInterval(interval);
+      } else {
+        await checkAiStatus();
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Check which offline speech models are already installed
   useEffect(() => {
@@ -136,15 +166,7 @@ export default function VoiceScreen() {
     }, 2000);
   };
 
-  // Speak greeting on mount
-  useEffect(() => {
-    const greeting = t('voice.greeting');
-    const langCode = selectedLanguage.split('-')[0];
-    setTimeout(() => {
-      Speech.speak(greeting, { language: langCode, rate: 0.9 });
-    }, 800);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
 
   // ─── Speech recognition events ────────────────────────────────────────────
   useSpeechRecognitionEvent('start', () => {
@@ -288,6 +310,28 @@ export default function VoiceScreen() {
     } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 
+  const handleDownloadModel = async () => {
+    setAiModelStatus('downloading');
+    setDownloadProgress(0);
+    try {
+      const success = await downloadModel((p) => {
+        setDownloadProgress(p.percentage);
+      });
+      if (success) {
+        setAiModelStatus('loading');
+        const loaded = await loadModel();
+        setAiModelStatus(loaded ? 'loaded' : 'loading');
+      } else {
+        Alert.alert('Download Failed', 'Could not download the AI model. Check your internet connection and try again.');
+        setAiModelStatus('not_downloaded');
+      }
+    } catch (e) {
+      console.error('[Voice] Download error:', e);
+      Alert.alert('Download Error', 'An error occurred while downloading. Please try again.');
+      setAiModelStatus('not_downloaded');
+    }
+  };
+
   const navigateToHistory = () => {
     router.push('/(main)/history' as Href);
   };
@@ -313,6 +357,39 @@ export default function VoiceScreen() {
           <TouchableOpacity onPress={navigateToHistory} style={styles.historyBtn}>
             <Text style={styles.historyBtnText}>📋</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* AI Model Status Pill */}
+        <View style={[
+          styles.aiStatusPill,
+          aiModelStatus === 'loaded' && styles.aiStatusPillReady,
+          (aiModelStatus === 'not_downloaded' || aiModelStatus === 'downloading') && styles.aiStatusPillMissing,
+        ]}>
+          {aiModelStatus === 'downloading' ? (
+            <View style={{ width: '100%' }}>
+              <Text style={[styles.aiStatusText, styles.aiStatusTextMissing]}>
+                ⬇️ Downloading AI Model… {downloadProgress}%
+              </Text>
+              <View style={{ height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, marginTop: 4 }}>
+                <View style={{ height: 4, backgroundColor: '#01696f', borderRadius: 2, width: `${downloadProgress}%` }} />
+              </View>
+            </View>
+          ) : aiModelStatus === 'not_downloaded' ? (
+            <TouchableOpacity onPress={handleDownloadModel} activeOpacity={0.7} style={{ width: '100%' }}>
+              <Text style={[styles.aiStatusText, styles.aiStatusTextMissing]}>
+                📥 Tap to Download AI Model (~3 GB)
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={[
+              styles.aiStatusText,
+              aiModelStatus === 'loaded' && styles.aiStatusTextReady,
+            ]}>
+              {aiModelStatus === 'loaded'
+                ? '⚡ AI Ready'
+                : '⏳ AI Loading in background…'}
+            </Text>
+          )}
         </View>
 
         {/* Category Selector */}
@@ -512,6 +589,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
   historyBtnText: { fontSize: 22 },
+
+  // AI Status Pill
+  aiStatusPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e6e4df',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  aiStatusPillReady: { backgroundColor: '#e6f5f5' },
+  aiStatusPillMissing: { backgroundColor: '#fef3cd' },
+  aiStatusText: { fontSize: 12, fontWeight: '600', color: '#7a7974' },
+  aiStatusTextReady: { color: '#01696f' },
+  aiStatusTextMissing: { color: '#964219' },
 
   // Section labels
   sectionLabel: {

@@ -3,6 +3,7 @@
 
 import { type RetrievedChunk } from './retriever';
 import { type ParsedResult } from '../ai/output-parser';
+import { type CandidateMatch } from '../ai/knowledge-base';
 
 export interface ValidationResult {
   conditionFoundInGuidelines: boolean;
@@ -13,35 +14,35 @@ export interface ValidationResult {
 
 export function validateAgainstRag(
   parsed: ParsedResult,
-  chunks: RetrievedChunk[]
+  chunks: RetrievedChunk[],
+  candidates: CandidateMatch[] = []
 ): ValidationResult {
-  if (chunks.length === 0) {
-    // No relevant chunks retrieved — condition may be outside scope
-    return {
-      conditionFoundInGuidelines: false,
-      ragConfidenceBoost: -0.15,
-      forceUrgentReferral: parsed.severity !== 'mild',
-      validationNote:
-        'Condition not found in indexed health guidelines. Confidence reduced.',
-    };
-  }
-
   const conditionLower = parsed.conditionName.toLowerCase();
 
-  // Check if any retrieved chunk's condition tags or text mention this condition
-  const conditionFound = chunks.some(
+  // 1. Check if the condition matches any of the knowledge base candidates
+  const inCandidates = candidates.some((c) =>
+    c.condition.name.toLowerCase() === conditionLower ||
+    conditionLower.includes(c.condition.name.toLowerCase()) ||
+    c.condition.name.toLowerCase().includes(conditionLower)
+  );
+
+  // 2. Check if the condition is mentioned in the RAG chunks
+  const inChunks = chunks.length > 0 && chunks.some(
     (chunk) =>
       chunk.conditionTags.some((tag) => conditionLower.includes(tag) || tag.includes(conditionLower.split(' ')[0])) ||
       chunk.chunkText.toLowerCase().includes(conditionLower.split(' ')[0])
   );
 
+  const conditionFound = inCandidates || inChunks;
+
   if (!conditionFound) {
     return {
       conditionFoundInGuidelines: false,
-      ragConfidenceBoost: -0.10,
+      ragConfidenceBoost: chunks.length === 0 ? -0.15 : -0.10,
       forceUrgentReferral: true,
-      validationNote:
-        'AI identified a condition not confirmed in ASHA/WHO guidelines. Referring to doctor.',
+      validationNote: chunks.length === 0
+        ? 'Condition not found in indexed health guidelines. Confidence reduced.'
+        : 'AI identified a condition not confirmed in ASHA/WHO guidelines. Referring to doctor.',
     };
   }
 

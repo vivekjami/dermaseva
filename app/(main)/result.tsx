@@ -9,16 +9,16 @@ import { useTranslation } from 'react-i18next';
 import * as Speech from 'expo-speech';
 import { getHistory, saveHistory, buildHistoryContext } from '@/modules/db/patient-history';
 
-// llama.cpp engine (replaces LiteRT)
+// llama.cpp engine
 import {
-  loadModel, runInference, runMockInference,
-  isModelDownloaded, downloadModel,
-  isModelLoaded, getLastModelError,
+  runInference, runMockInference,
+  isModelLoaded, isModelDownloaded, loadModel,
   MODEL_SIZE_BYTES,
 } from '@/modules/ai/llama-engine';
 
 import { buildPrompt } from '@/modules/ai/prompt-builder';
 import { parseModelOutput, type ParsedResult } from '@/modules/ai/output-parser';
+import { findCandidateConditions, formatCandidatesForPrompt } from '@/modules/ai/knowledge-base';
 import { useAppStore } from '@/store/app-store';
 import { isIndexUpToDate, buildIndex } from '@/modules/rag/indexer';
 import { retrieveRelevantChunks, buildRagContext } from '@/modules/rag/retriever';
@@ -28,7 +28,7 @@ import { getReferralDecision } from '@/modules/safety/referral-logic';
 import { ReferralCTA } from '@/components/ReferralCTA';
 import { SafetyBanner } from '@/components/SafetyBanner';
 import { OtcCard } from '@/components/OtcCard';
-import { saveCase } from '@/modules/db/case-store';
+import { saveCase, getCaseById } from '@/modules/db/case-store';
 import { sanitiseSymptomsForStorage } from '@/modules/security/privacy-check';
 
 type InferenceState =
@@ -50,12 +50,13 @@ function formatBytes(bytes: number): string {
 }
 
 export default function ResultScreen() {
-  const { symptoms, language: voiceLang, inputMode: rawInputMode, category: rawCategory, isFollowUp: rawFollowUp } = useLocalSearchParams<{
-    symptoms: string;
-    language: string;
-    inputMode: string;
-    category: string;
-    isFollowUp: string;
+  const { caseId, symptoms, language: voiceLang, inputMode: rawInputMode, category: rawCategory, isFollowUp: rawFollowUp } = useLocalSearchParams<{
+    caseId?: string;
+    symptoms?: string;
+    language?: string;
+    inputMode?: string;
+    category?: string;
+    isFollowUp?: string;
   }>();
   const inputMode = (rawInputMode === 'text' ? 'text' : 'voice') as 'voice' | 'text';
   const category = (rawCategory === 'child_health' || rawCategory === 'malnutrition' ? rawCategory : 'skin') as import('@/store/app-store').Category;
@@ -75,48 +76,132 @@ export default function ResultScreen() {
   const [downloadPct, setDownloadPct] = useState(0);
   const hasStartedAnalysis = useRef(false);
 
-  // ─── Single clean flow: download → load → infer ────────────────────────────
+  // ─── Load from history flow ───────────────────────────────────────────────
   useEffect(() => {
-    if (!symptoms || hasStartedAnalysis.current) return;
+    if (!caseId) return;
+
+    (async () => {
+      try {
+        const pastCase = await getCaseById(caseId);
+        if (pastCase && pastCase.condition_name) {
+          const parsed: ParsedResult = {
+            conditionName: pastCase.condition_name,
+            confidence: pastCase.confidence ?? 0,
+            severity: (pastCase.severity as 'mild' | 'moderate' | 'severe') ?? 'moderate',
+            keySigns: [],
+            actionSteps: [],
+            otcSuggestion: pastCase.otc_suggestion,
+            doctorReferral: pastCase.doctor_referral ?? '',
+            needsUrgentReferral: pastCase.needs_urgent_referral,
+            guidelineSource: null,
+            followUpPlan: null,
+            isLowConfidence: (pastCase.confidence ?? 0) < 0.55,
+            parseError: null,
+            inferenceSource: (pastCase.inference_source as 'llama' | 'mock') ?? 'mock',
+          };
+          setResult(parsed);
+          setInferenceSource(parsed.inferenceSource);
+          setInferenceState('done');
+        } else {
+          setInferenceState('error');
+        }
+      } catch (e) {
+        console.error('[Result] Failed to load history case:', e);
+        setInferenceState('error');
+      }
+    })();
+  }, [caseId]);
+
+  // ─── Single clean flow: use model if ready, else guideline engine ──────────
+  useEffect(() => {
+    if (caseId || !symptoms || hasStartedAnalysis.current) return;
     hasStartedAnalysis.current = true;
 
     (async () => {
       try {
-        // 1. Check if model is downloaded
-        const downloaded = await isModelDownloaded();
-        if (!downloaded) {
-          setInferenceState('downloading');
-          console.warn('[Result] Model not found, downloading...');
-          const success = await downloadModel((progress) => {
-            setDownloadPct(progress.percentage);
-          });
-          if (!success) {
-            console.warn('[Result] Download failed, using guideline mode');
-            await runAnalysis(true);
-            return;
+        if (isModelLoaded()) {
+          // Model already loaded from background preload — use it
+          console.warn('[Result] Model already loaded, running AI inference.');
+          await runAnalysis(false);
+        } else {
+          // Model not loaded yet — check if it's downloaded and try a quick load
+          const downloaded = await isModelDownloaded();
+          if (downloaded) {
+            console.warn('[Result] Model downloaded but not loaded, trying quick load (15s)...');
+            setInferenceState('loading_model');
+            const loaded = await Promise.race([
+              loadModel(),
+              new Promise<boolean>(r => setTimeout(() => r(false), 15_000)),
+            ]);
+            if (loaded) {
+              console.warn('[Result] Quick load succeeded!');
+              await runAnalysis(false);
+              return;
+            }
           }
+          // Not downloaded or quick load failed — use knowledge base immediately
+          console.warn('[Result] Using guideline-based analysis.');
+          await runAnalysis(true);
         }
-
-        // 2. Load model (mmap — fast)
-        if (!isModelLoaded()) {
-          setInferenceState('loading_model');
-          const loaded = await loadModel();
-          if (!loaded) {
-            console.warn('[Result] Model load failed:', getLastModelError());
-            await runAnalysis(true);
-            return;
-          }
-        }
-
-        // 3. Run real inference
-        await runAnalysis(false);
       } catch (e: unknown) {
         console.error('[Result] Top-level error, falling back to mock:', e);
-        await runAnalysis(true);
+        try {
+          await runAnalysis(true);
+        } catch (fallbackErr) {
+          console.error('[Result] Even mock fallback failed:', fallbackErr);
+          setInferenceState('error');
+        }
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symptoms]);
+
+  // ─── Smart TTS with voice fallback ──────────────────────────────────────────
+  async function speakResult(parsed: ParsedResult, langInput: string) {
+    const actionSummary = parsed.actionSteps?.length > 0
+      ? `. ${parsed.actionSteps[0]}` : '';
+    const textToSpeak = `${parsed.conditionName}. ${parsed.severity}. ${parsed.doctorReferral}${actionSummary}`;
+
+    // Get the base language code (e.g., 'te' from 'te-IN')
+    const baseLang = langInput.split('-')[0];
+
+    // Try to find a voice for the requested language
+    try {
+      const voices = await Speech.getAvailableVoicesAsync();
+
+      // Preferred language order: requested → Hindi → English
+      const langPreference = [baseLang, 'hi', 'en'];
+      let chosenVoice: string | undefined;
+      let chosenLang = baseLang;
+
+      for (const lang of langPreference) {
+        const match = voices.find(
+          (v) => v.language.startsWith(lang) && v.quality === 'Enhanced'
+        ) ?? voices.find(
+          (v) => v.language.startsWith(lang)
+        );
+        if (match) {
+          chosenVoice = match.identifier;
+          chosenLang = match.language;
+          break;
+        }
+      }
+
+      Speech.speak(textToSpeak, {
+        language: chosenLang,
+        voice: chosenVoice,
+        rate: 0.9,      // Natural speaking pace
+        pitch: 1.0,     // Natural pitch (1.3 was too robotic/squeaky)
+      });
+    } catch {
+      // Fallback — just use basic English
+      Speech.speak(textToSpeak, {
+        language: 'en',
+        rate: 0.9,
+        pitch: 1.0,
+      });
+    }
+  }
 
   async function runAnalysis(useMock: boolean) {
     try {
@@ -139,7 +224,13 @@ export default function ResultScreen() {
         // No history yet — that's fine
       }
 
-      // 4. Build prompt
+      // 4. Find candidate conditions from knowledge base
+      const symptomText = symptoms ?? 'skin rash itching';
+      const candidates = findCandidateConditions(symptomText, category);
+      const candidateContext = formatCandidatesForPrompt(candidates);
+      console.warn(`[Result] Found ${candidates.length} candidate conditions:`, candidates.map(c => c.condition.name));
+
+      // 5. Build prompt with candidates injected
       setInferenceState('running');
       const basePrompt = buildPrompt({
         symptomDescription: symptoms ?? 'No symptom description provided.',
@@ -149,12 +240,14 @@ export default function ResultScreen() {
         category,
         isFollowUp,
         conversationHistory: isFollowUp ? conversationHistory : undefined,
+        candidateContext,
       });
 
       let fullPrompt = '';
       if (historyContext) fullPrompt += `Previous visits:\n${historyContext}\n\n`;
-      if (ragContext) fullPrompt += `Guidelines:\n${ragContext.slice(0, 800)}\n\n`;
-      fullPrompt += `---\n${basePrompt}`;
+      // Don't inject raw RAG text if we already injected candidates to save tokens
+      if (ragContext && candidates.length === 0) fullPrompt += `Guidelines:\n${ragContext.slice(0, 600)}\n\n`;
+      fullPrompt += basePrompt;
 
       // 5. Run inference
       let rawText: string;
@@ -184,9 +277,22 @@ export default function ResultScreen() {
 
       // 6. Parse and validate
       let parsed = parseModelOutput(rawText);
-      parsed = { ...parsed, inferenceSource: useMock ? 'mock' : 'llama' };
+      
+      // If the model generated garbage/invalid JSON, use the mock fallback immediately
+      if (parsed.isLowConfidence && !useMock) {
+        console.warn('[Result] Llama generated low confidence / invalid output, falling back to mock.');
+        setInferenceSource('mock');
+        const mockOutput = runMockInference({ prompt: fullPrompt });
+        rawText = mockOutput.rawText;
+        elapsed += mockOutput.inferenceTimeMs;
+        setInferenceMs(elapsed);
+        parsed = parseModelOutput(rawText);
+        parsed = { ...parsed, inferenceSource: 'mock' };
+      } else {
+        parsed = { ...parsed, inferenceSource: useMock ? 'mock' : 'llama' };
+      }
 
-      const validation = validateAgainstRag(parsed, ragChunks);
+      const validation = validateAgainstRag(parsed, ragChunks, candidates);
       setRagNote(validation.validationNote);
       const adjustedConfidence = Math.max(0, Math.min(1, parsed.confidence + validation.ragConfidenceBoost));
       parsed = {
@@ -213,14 +319,8 @@ export default function ResultScreen() {
       setResult(parsed);
       setInferenceState('done');
 
-      // Read diagnosis aloud in the selected language
-      const langCode = (voiceLang || 'en-US').split('-')[0];
-      const actionSummary = parsed.actionSteps?.length > 0
-        ? `. ${parsed.actionSteps[0]}` : '';
-      Speech.speak(
-        `${parsed.conditionName}. ${parsed.severity}. ${parsed.doctorReferral}${actionSummary}`,
-        { language: langCode, rate: 0.85 }
-      );
+      // Read diagnosis aloud — pick best available voice
+      speakResult(parsed, voiceLang || appLanguage || 'en');
 
       // Save AI response to conversation history
       addMessage({

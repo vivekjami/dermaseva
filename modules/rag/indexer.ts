@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 import { Asset } from 'expo-asset';
 import { NHM_ASHA_ASSET, WHO_SKIN_ASSET, IMNCI_CHILD_HEALTH_ASSET, MALNUTRITION_ASSET } from '@/docs/index';
 
-export const RAG_INDEX_VERSION = 7;
+export const RAG_INDEX_VERSION = 8;
 const DB_NAME = 'dermaseva-rag.db';
 const CHUNK_MAX_WORDS = 80;
 const CHUNK_OVERLAP_WORDS = 15;
@@ -64,7 +64,9 @@ const DOC_SOURCES: DocSource[] = [
     conditionTags: [
       'ringworm', 'tinea', 'tinea versicolor', 'scabies',
       'contact dermatitis', 'heat rash', 'miliaria', 'eczema',
-      'leprosy', 'referral',
+      'leprosy', 'referral', 'dry skin', 'xerosis', 'acne', 'pimples',
+      'urticaria', 'hives', 'boils', 'wound', 'cut', 'burn',
+      'dandruff', 'seborrheic', 'fungal',
     ],
   },
   {
