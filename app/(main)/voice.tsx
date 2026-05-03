@@ -9,6 +9,7 @@ import {
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 import * as Network from 'expo-network';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
@@ -104,25 +105,50 @@ export default function VoiceScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // ─── Verify which Google offline models are actually installed ───────────
-  const refreshInstalledLocales = async () => {
+  // ─── Track which Google offline models WE have downloaded ────────────────
+  // We do NOT trust getSupportedLocales().installedLocales — it's unreliable
+  // (e.g. English shows as "installed" on new devices even when it's not).
+  // Instead, we track successful downloads ourselves using a local JSON file.
+  const DOWNLOAD_TRACKER_PATH = `${FileSystem.documentDirectory}stt-downloads.json`;
+
+  const loadDownloadTracker = async (): Promise<Set<string>> => {
     try {
-      const result = await ExpoSpeechRecognitionModule.getSupportedLocales({});
-      // Try installedLocales first (downloaded offline models)
-      // If that doesn't exist, fall back to empty
-      const offlineList: string[] = result.installedLocales ?? [];
-      const installed = new Set<string>(
-        offlineList.map((l: string) => l.toLowerCase())
-      );
-      console.warn('[Voice] Google installed offline locales:', [...installed].join(', ') || '(none)');
-      setInstalledLocales(installed);
-    } catch (e) {
-      console.warn('[Voice] getSupportedLocales failed:', e);
-      setInstalledLocales(new Set());
+      const info = await FileSystem.getInfoAsync(DOWNLOAD_TRACKER_PATH);
+      if (!info.exists) return new Set();
+      const json = await FileSystem.readAsStringAsync(DOWNLOAD_TRACKER_PATH);
+      const arr = JSON.parse(json);
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch {
+      return new Set();
     }
   };
 
-  useEffect(() => { refreshInstalledLocales(); }, []);
+  const saveDownloadTracker = async (locales: Set<string>) => {
+    try {
+      await FileSystem.writeAsStringAsync(
+        DOWNLOAD_TRACKER_PATH,
+        JSON.stringify([...locales]),
+      );
+    } catch (e) {
+      console.warn('[Voice] Failed to save download tracker:', e);
+    }
+  };
+
+  const markLocaleDownloaded = async (locale: string) => {
+    const current = await loadDownloadTracker();
+    current.add(locale.toLowerCase());
+    await saveDownloadTracker(current);
+    setInstalledLocales(current);
+  };
+
+  // Load tracked downloads on mount
+  useEffect(() => {
+    (async () => {
+      const tracked = await loadDownloadTracker();
+      console.warn('[Voice] Tracked Google offline downloads:', [...tracked].join(', ') || '(none)');
+      setInstalledLocales(tracked);
+    })();
+  }, []);
 
   // ─── Check Whisper model status on mount ────────────────────────────────
   useEffect(() => {
@@ -141,7 +167,7 @@ export default function VoiceScreen() {
   }, []);
 
   // ─── Helpers ────────────────────────────────────────────────────────────
-  /** Check if a Google offline model is installed for this locale */
+  /** Check if we've tracked a successful Google offline download for this locale */
   function isGoogleOfflineInstalled(locale: string): boolean {
     const baseLang = locale.split('-')[0].toLowerCase();
     return [...installedLocales].some((l) => l.startsWith(baseLang));
@@ -154,7 +180,7 @@ export default function VoiceScreen() {
 
   /**
    * Get the display status for a language chip:
-   * - Google languages: ✓ if Google offline installed, ↓ if not
+   * - Google languages: ✓ if we tracked a successful download, ↓ if not
    * - Whisper languages: ✓ if Whisper model downloaded/loaded, ↓ if not
    */
   function getLangStatus(locale: string): '✓' | '↓' | '⏳' {
@@ -237,6 +263,8 @@ export default function VoiceScreen() {
             locale: langCode,
           });
           console.warn(`[Voice] Google STT download for ${langCode}:`, result?.status);
+          // Track successful download so we show ✓ next time
+          await markLocaleDownloaded(langCode);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           console.warn(`[Voice] Google STT download failed for ${langCode}:`, msg);
@@ -247,7 +275,6 @@ export default function VoiceScreen() {
           );
         }
         setDownloadingLocale(null);
-        await refreshInstalledLocales();
       }
     } else {
       // Whisper language — if whisper not ready, prompt download
