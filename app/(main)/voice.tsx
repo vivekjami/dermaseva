@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Animated, Keyboard, Alert, ActivityIndicator,
+  ScrollView, Animated, Keyboard, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
 import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
 import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
-import {
-  isWhisperLoaded, isWhisperDownloaded, downloadWhisperModel,
-  loadWhisperModel, transcribeAudio,
-} from '@/modules/stt/whisper-engine';
-import { startRecording, stopRecording } from '@/modules/stt/audio-recorder';
 
 const MAX_CHARS = 1200;
 
@@ -56,9 +55,7 @@ export default function VoiceScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
   const [aiModelStatus, setAiModelStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
-  const [whisperStatus, setWhisperStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [isTranscribing, setIsTranscribing] = useState(false);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
@@ -89,29 +86,37 @@ export default function VoiceScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check & load Whisper STT model
-  useEffect(() => {
-    async function checkWhisperStatus() {
-      try {
-        if (isWhisperLoaded()) {
-          setWhisperStatus('loaded');
-          return;
-        }
-        const downloaded = await isWhisperDownloaded();
-        if (!downloaded) {
-          setWhisperStatus('not_downloaded');
-          return;
-        }
-        setWhisperStatus('loading');
-        await loadWhisperModel();
-        setWhisperStatus('loaded');
-      } catch {
-        setWhisperStatus('not_downloaded');
+  // ─── Speech recognition events (expo-speech-recognition) ──────────────────
+  useSpeechRecognitionEvent('start', () => {
+    setIsListening(true);
+    setError('');
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    if (event.results && event.results.length > 0) {
+      const latestTranscript = event.results[0]?.transcript ?? '';
+      if (event.isFinal) {
+        setTranscription((prev) => {
+          if (!prev.trim()) return latestTranscript;
+          return `${prev} ${latestTranscript}`;
+        });
       }
     }
-    checkWhisperStatus();
-  }, []);
+  });
 
+  useSpeechRecognitionEvent('error', (event) => {
+    console.error('[Voice] Error:', event.error, event.message);
+    if (event.error === 'no-speech') {
+      setIsListening(false);
+      return;
+    }
+    setError(event.message || t('voice.speechFailed'));
+    setIsListening(false);
+  });
 
 
   // Pulse animation
@@ -139,66 +144,33 @@ export default function VoiceScreen() {
     ensureTTSVoiceForLanguage(appCode).catch(() => {});
   };
 
-  // Download Whisper STT model
-  const handleDownloadWhisper = async () => {
-    setWhisperStatus('downloading');
-    try {
-      await downloadWhisperModel((pct) => setDownloadProgress(pct));
-      setWhisperStatus('loading');
-      await loadWhisperModel();
-      setWhisperStatus('loaded');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      Alert.alert('Download Failed', `Could not download speech model: ${msg}`);
-      setWhisperStatus('not_downloaded');
-    }
-  };
-
-  // Toggle recording — fully offline via Whisper
+  // Toggle listening — streaming real-time via expo-speech-recognition
+  // No download triggers, no system UI. requiresOnDeviceRecognition: false
+  // lets Google use offline if available, cloud otherwise — silently.
   const toggleListening = async () => {
     setError('');
     Keyboard.dismiss();
 
     if (isListening) {
-      // Stop recording and transcribe
-      setIsListening(false);
-      setIsTranscribing(true);
-      try {
-        const audioPath = await stopRecording();
-        if (!audioPath) {
-          setError('Recording failed — no audio captured');
-          setIsTranscribing(false);
-          return;
-        }
-        // Transcribe using Whisper (fully offline)
-        const result = await transcribeAudio(audioPath, selectedLanguage);
-        if (result.text.trim()) {
-          setTranscription((prev) => {
-            if (!prev.trim()) return result.text;
-            return `${prev} ${result.text}`;
-          });
-        } else {
-          setError(t('voice.speechFailed') || 'No speech detected');
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(`Transcription failed: ${msg}`);
-      } finally {
-        setIsTranscribing(false);
-      }
+      ExpoSpeechRecognitionModule.stop();
       return;
     }
 
-    // Check if Whisper model is ready
-    if (!isWhisperLoaded()) {
-      setError('Speech model not loaded. Please download it first.');
-      return;
-    }
-
-    // Start recording
     try {
-      await startRecording();
-      setIsListening(true);
+      const permResult = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permResult.granted) {
+        setError(t('voice.permissionDenied'));
+        return;
+      }
+
+      ExpoSpeechRecognitionModule.start({
+        lang: selectedLanguage,
+        interimResults: false,
+        maxAlternatives: 1,
+        continuous: false,
+        addsPunctuation: true,
+        requiresOnDeviceRecognition: false,
+      });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
@@ -448,32 +420,7 @@ export default function VoiceScreen() {
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
-        {inputMode === 'voice' && whisperStatus === 'not_downloaded' && (
-          <TouchableOpacity
-            style={[styles.recordButton, { backgroundColor: '#1565C0' }]}
-            onPress={handleDownloadWhisper}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.micIcon}>📥</Text>
-            <Text style={styles.recordButtonText}>Download Speech Model (~142 MB)</Text>
-          </TouchableOpacity>
-        )}
-
-        {inputMode === 'voice' && whisperStatus === 'downloading' && (
-          <View style={[styles.recordButton, { backgroundColor: '#37474F' }]}>
-            <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.recordButtonText}>Downloading... {downloadProgress}%</Text>
-          </View>
-        )}
-
-        {inputMode === 'voice' && whisperStatus === 'loading' && (
-          <View style={[styles.recordButton, { backgroundColor: '#37474F' }]}>
-            <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.recordButtonText}>Loading speech model...</Text>
-          </View>
-        )}
-
-        {inputMode === 'voice' && whisperStatus === 'loaded' && !isTranscribing && (
+        {inputMode === 'voice' && (
           <Animated.View style={[styles.micContainer, { transform: [{ scale: pulseAnim }] }]}>
             <TouchableOpacity
               style={[styles.recordButton, isListening && styles.recordingButton]}
@@ -486,13 +433,6 @@ export default function VoiceScreen() {
               </Text>
             </TouchableOpacity>
           </Animated.View>
-        )}
-
-        {inputMode === 'voice' && isTranscribing && (
-          <View style={[styles.recordButton, { backgroundColor: '#37474F' }]}>
-            <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.recordButtonText}>Transcribing speech...</Text>
-          </View>
         )}
 
         <TouchableOpacity
