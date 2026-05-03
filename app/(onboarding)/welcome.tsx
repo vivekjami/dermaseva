@@ -8,7 +8,6 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore, type WorkerType } from '@/store/app-store';
 import { isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
 import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
-import { downloadAllOfflineSTTModels } from '@/modules/stt/stt-offline-downloader';
 
 const LANGUAGES = [
   { label: 'English', code: 'en', native: 'English' },
@@ -67,10 +66,6 @@ export default function WelcomeScreen() {
     router.replace('/(main)/voice' as Href);
     // Start model loading in background
     loadModel().catch(e => console.warn('[Welcome] Background model load error:', e));
-    // Trigger offline STT downloads for all 6 languages in background
-    downloadAllOfflineSTTModels().catch(e =>
-      console.warn('[Welcome] STT offline download error:', e)
-    );
   };
 
   const handleGetStarted = async () => {

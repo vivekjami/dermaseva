@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { loadModel, isModelDownloaded } from '@/modules/ai/llama-engine';
-import { downloadAllOfflineSTTModels } from '@/modules/stt/stt-offline-downloader';
 import '../i18n';
 
 export default function RootLayout() {
@@ -21,11 +20,6 @@ export default function RootLayout() {
       } catch (e) {
         console.warn('[RootLayout] Check failed:', e);
       }
-
-      // Trigger offline STT downloads for all 6 languages (runs silently in background)
-      downloadAllOfflineSTTModels().catch(e =>
-        console.warn('[RootLayout] STT offline download error:', e)
-      );
     })();
   }, []);
 

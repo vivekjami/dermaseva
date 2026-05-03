@@ -56,6 +56,8 @@ export default function VoiceScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [aiModelStatus, setAiModelStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [installedLocales, setInstalledLocales] = useState<Set<string>>(new Set());
+  const [downloadingLocale, setDownloadingLocale] = useState<string | null>(null);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
@@ -85,6 +87,29 @@ export default function VoiceScreen() {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  // Check which offline STT models are installed
+  const refreshInstalledLocales = async () => {
+    try {
+      const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
+      const installed = new Set<string>(
+        (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
+      );
+      setInstalledLocales(installed);
+    } catch {
+      // If check fails, assume empty — cloud will handle
+    }
+  };
+
+  useEffect(() => {
+    refreshInstalledLocales();
+  }, []);
+
+  // Helper: check if a locale is in the installed set
+  function isLocaleInstalled(locale: string): boolean {
+    const baseLang = locale.split('-')[0].toLowerCase();
+    return [...installedLocales].some((l) => l.startsWith(baseLang));
+  }
 
   // ─── Speech recognition events (expo-speech-recognition) ──────────────────
   useSpeechRecognitionEvent('start', () => {
@@ -136,17 +161,32 @@ export default function VoiceScreen() {
   }, [isListening, pulseAnim]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
-  const handleLanguageChange = (langCode: string, appCode: string) => {
+  const handleLanguageChange = async (langCode: string, appCode: string) => {
     setSelectedLanguage(langCode);
     setLanguage(appCode);
     i18n.changeLanguage(appCode);
     // Silent TTS warmup — no UI, no intents, just a near-silent speak
     ensureTTSVoiceForLanguage(appCode).catch(() => {});
+
+    // If STT model is NOT installed offline, trigger download for this language
+    if (!isLocaleInstalled(langCode)) {
+      setDownloadingLocale(langCode);
+      try {
+        const result = await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
+          locale: langCode,
+        });
+        console.warn(`[Voice] STT download for ${langCode}:`, result?.status);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`[Voice] STT download failed for ${langCode}:`, msg);
+      }
+      setDownloadingLocale(null);
+      // Re-check installed locales after download attempt
+      await refreshInstalledLocales();
+    }
   };
 
-  // Toggle listening — streaming real-time via expo-speech-recognition
-  // No download triggers, no system UI. requiresOnDeviceRecognition: false
-  // lets Google use offline if available, cloud otherwise — silently.
+  // Toggle listening — uses on-device if model is installed, cloud otherwise
   const toggleListening = async () => {
     setError('');
     Keyboard.dismiss();
@@ -163,16 +203,35 @@ export default function VoiceScreen() {
         return;
       }
 
+      const offlineAvailable = isLocaleInstalled(selectedLanguage);
+
       ExpoSpeechRecognitionModule.start({
         lang: selectedLanguage,
         interimResults: false,
         maxAlternatives: 1,
         continuous: false,
         addsPunctuation: true,
-        requiresOnDeviceRecognition: false,
+        // Use on-device if we have the model, cloud otherwise
+        requiresOnDeviceRecognition: offlineAvailable,
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      // If on-device failed, retry with cloud
+      if (msg.includes('on-device') || msg.includes('offline')) {
+        try {
+          ExpoSpeechRecognitionModule.start({
+            lang: selectedLanguage,
+            interimResults: false,
+            maxAlternatives: 1,
+            continuous: false,
+            addsPunctuation: true,
+            requiresOnDeviceRecognition: false,
+          });
+          return;
+        } catch {
+          // Fall through to error below
+        }
+      }
       setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
       setIsListening(false);
     }
@@ -343,14 +402,17 @@ export default function VoiceScreen() {
               <View style={styles.langRow}>
                 {VOICE_LANGUAGES.map((lang) => {
                   const isSelected = selectedLanguage === lang.code;
+                  const installed = isLocaleInstalled(lang.code);
+                  const isDownloading = downloadingLocale === lang.code;
                   return (
                     <TouchableOpacity
                       key={lang.code}
                       style={[styles.langChip, isSelected && styles.langChipSelected]}
                       onPress={() => handleLanguageChange(lang.code, lang.appCode)}
+                      disabled={isDownloading}
                     >
                       <Text style={[styles.langText, isSelected && styles.langTextSelected]}>
-                        {lang.label}
+                        {lang.label} {isDownloading ? '⏳' : installed ? '✓' : '↓'}
                       </Text>
                     </TouchableOpacity>
                   );
