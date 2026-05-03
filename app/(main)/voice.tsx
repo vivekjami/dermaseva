@@ -213,20 +213,22 @@ export default function VoiceScreen() {
     // Silent TTS warmup
     ensureTTSVoiceForLanguage(appCode).catch(() => {});
 
-    // If Google doesn't have offline model, try download (only for en/hi which Google supports)
+    // If Google offline model is NOT installed, trigger download dialog
+    // (Google will show its own dialog if the language is supported)
     if (!isLocaleInstalled(langCode)) {
-      // Only try Google download for languages Google actually supports offline
-      const googleOfflineSupported = ['en-US', 'hi-IN'];
-      if (googleOfflineSupported.includes(langCode)) {
-        setDownloadingLocale(langCode);
-        try {
-          await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale: langCode });
-        } catch {
-          // Silently fail — cloud will handle
-        }
-        setDownloadingLocale(null);
-        await refreshInstalledLocales();
+      setDownloadingLocale(langCode);
+      try {
+        const result = await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
+          locale: langCode,
+        });
+        console.warn(`[Voice] STT download for ${langCode}:`, result?.status);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`[Voice] STT download unavailable for ${langCode}:`, msg);
+        // Don't show alert — the Whisper banner handles this
       }
+      setDownloadingLocale(null);
+      await refreshInstalledLocales();
     }
   };
 
@@ -248,9 +250,15 @@ export default function VoiceScreen() {
 
   /**
    * Toggle listening — HYBRID approach:
-   * 1. Online → expo-speech-recognition (instant streaming, any language)
-   * 2. Offline + Google has model (en/hi) → expo-speech-recognition on-device
-   * 3. Offline + no Google model (te/ta/kn/mr) → Whisper.rn fallback
+   *
+   * ONLINE (any language):
+   *   → expo-speech-recognition cloud (instant streaming)
+   *
+   * OFFLINE + Google offline model installed (en/hi if downloaded):
+   *   → expo-speech-recognition on-device (instant)
+   *
+   * OFFLINE + NO installed model (te/ta/kn/mr, or en/hi not downloaded):
+   *   → Whisper.rn fallback (record + transcribe)
    */
   const toggleListening = async () => {
     setError('');
@@ -293,19 +301,33 @@ export default function VoiceScreen() {
     }
 
     // ─── Start recording ───
-    // Check if we need Whisper fallback (offline + no Google model)
-    const useWhisper = await needsWhisperFallback(selectedLanguage);
+    // Step 1: Check network status
+    let isOnline = true;
+    try {
+      const state = await Network.getNetworkStateAsync();
+      isOnline = !!state.isConnected;
+    } catch {
+      isOnline = true; // Assume online if check fails
+    }
 
-    if (useWhisper) {
-      // Whisper fallback path
+    const hasGoogleOffline = isLocaleInstalled(selectedLanguage);
+
+    // Step 2: If OFFLINE and NO Google offline model → use Whisper
+    if (!isOnline && !hasGoogleOffline) {
       if (!isWhisperLoaded()) {
         if (whisperStatus === 'not_downloaded') {
-          setError('You are offline and this language needs the Whisper model. Please download it while online.');
+          setError(
+            'You are offline and need the speech model.\n' +
+            'Please connect to the internet and tap "Download offline speech model" below.'
+          );
+        } else if (whisperStatus === 'loading' || whisperStatus === 'downloading') {
+          setError('Speech model is still loading. Please wait a moment.');
         } else {
-          setError('Speech model is still loading. Please wait.');
+          setError('Speech model failed to load. Please restart the app.');
         }
         return;
       }
+      // Whisper is loaded — start recording
       try {
         await startRecording();
         setIsUsingWhisper(true);
@@ -317,7 +339,8 @@ export default function VoiceScreen() {
       return;
     }
 
-    // ─── Default: expo-speech-recognition (streaming) ───
+    // Step 3: If OFFLINE + Google offline model installed → on-device
+    // Step 4: If ONLINE → cloud (works for ALL languages)
     try {
       const permResult = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!permResult.granted) {
@@ -325,20 +348,32 @@ export default function VoiceScreen() {
         return;
       }
 
-      const offlineAvailable = isLocaleInstalled(selectedLanguage);
-
       ExpoSpeechRecognitionModule.start({
         lang: selectedLanguage,
         interimResults: false,
         maxAlternatives: 1,
         continuous: false,
         addsPunctuation: true,
-        requiresOnDeviceRecognition: offlineAvailable,
+        // On-device only if we KNOW it's installed; otherwise cloud
+        requiresOnDeviceRecognition: !isOnline && hasGoogleOffline,
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      // If on-device failed, retry with cloud
-      if (msg.includes('on-device') || msg.includes('offline')) {
+      // If on-device failed, try cloud as last resort
+      if (!isOnline) {
+        // We're offline and Google failed — fall back to Whisper if available
+        if (isWhisperLoaded()) {
+          try {
+            await startRecording();
+            setIsUsingWhisper(true);
+            setIsListening(true);
+            return;
+          } catch {
+            // Fall through to error
+          }
+        }
+      } else {
+        // Online but start failed — retry without on-device constraint
         try {
           ExpoSpeechRecognitionModule.start({
             lang: selectedLanguage,
