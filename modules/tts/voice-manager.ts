@@ -1,13 +1,15 @@
 /**
- * voice-manager.ts — Manages TTS voice availability and automatic download.
+ * voice-manager.ts — Manages TTS voice availability and download.
  *
- * When a language is selected, this module:
- * 1. Checks if a TTS voice for that language is already installed
- * 2. If not, triggers the Android TTS data install intent (downloads in background)
- * 3. Warms up the TTS engine by speaking a silent/short string to prime the cache
+ * Strategy:
+ * 1. When a language is selected, check if a TTS voice exists for it
+ * 2. If it exists → do nothing (already good)
+ * 3. If missing → do a warmup speak with a real phrase in that language.
+ *    Google TTS auto-downloads voice data when it first encounters a language.
+ * 4. If the user wants to manually download → open Android TTS settings directly
  *
- * Android will automatically download the voice data when the TTS install intent fires.
- * On devices where the intent is not supported, falls back to a warmup speak.
+ * Note: There is NO silent background download API on Android for TTS voices.
+ * Google TTS handles downloads automatically when a language is first used.
  */
 
 import { Platform } from 'react-native';
@@ -23,14 +25,15 @@ const LANG_TO_LOCALE: Record<string, string> = {
   mr: 'mr-IN',
 };
 
-// Warmup phrases per language (very short, spoken silently to prime the engine)
+// Real warmup phrases per language — must be actual text, not just spaces.
+// Google TTS will attempt to synthesize these, triggering voice data download.
 const WARMUP_PHRASES: Record<string, string> = {
-  en: ' ',
-  hi: ' ',
-  te: ' ',
-  ta: ' ',
-  kn: ' ',
-  mr: ' ',
+  en: 'Ready.',
+  hi: 'तैयार।',
+  te: 'సిద్ధం.',
+  ta: 'தயார்.',
+  kn: 'ಸಿದ್ಧ.',
+  mr: 'तयार.',
 };
 
 /**
@@ -47,60 +50,74 @@ export async function isTTSVoiceAvailable(langCode: string): Promise<boolean> {
 }
 
 /**
- * Trigger automatic TTS voice data download for a language.
- * This fires the Android system intent to install TTS data.
- * On iOS or if the intent fails, falls back to a warmup speak.
+ * Ensure TTS voice is available for a language.
+ * Triggers Google TTS to download voice data by speaking a short phrase.
  */
 export async function ensureTTSVoiceForLanguage(langCode: string): Promise<void> {
   const baseLang = langCode.split('-')[0].toLowerCase();
   const locale = LANG_TO_LOCALE[baseLang] ?? 'en-IN';
 
-  // Check if voice is already available
   const available = await isTTSVoiceAvailable(baseLang);
   if (available) {
     console.warn(`[VoiceManager] TTS voice for ${baseLang} already available.`);
     return;
   }
 
-  console.warn(`[VoiceManager] TTS voice for ${baseLang} not found. Triggering download...`);
+  console.warn(`[VoiceManager] TTS voice for ${baseLang} not found. Triggering warmup...`);
 
+  // Speak a real phrase in the target language.
+  // Google TTS engine will:
+  //   1. Use a basic/fallback voice immediately
+  //   2. Start downloading the high-quality voice data in background
+  // This is the most reliable way to trigger voice downloads on Android.
+  warmupTTS(baseLang, locale);
+
+  // Also try the TTS install intent as a secondary trigger
   if (Platform.OS === 'android') {
     try {
-      // Dynamically import to avoid crash on iOS
       const IntentLauncher = await import('expo-intent-launcher');
-      // Fire the TTS install data intent — Android opens the TTS engine's data manager
-      // and automatically begins downloading the requested language data
       await IntentLauncher.startActivityAsync(
         'android.speech.tts.engine.INSTALL_TTS_DATA'
       );
-      console.warn(`[VoiceManager] TTS install intent fired for ${locale}`);
-    } catch (e) {
-      console.warn('[VoiceManager] Intent failed, using warmup fallback:', e);
-      // Fallback: speak a tiny warmup phrase — this nudges Android to
-      // download the voice data in background via Google TTS engine
-      warmupTTS(baseLang, locale);
+    } catch {
+      // Intent not supported on this device — warmup alone should work
     }
   }
-
-  // Also do a warmup speak — on many devices this alone triggers the download
-  warmupTTS(baseLang, locale);
 }
 
 /**
- * Warm up the TTS engine by speaking a near-silent string in the target language.
- * This causes Android's Google TTS to initialize for that language,
- * which often triggers an automatic background download of voice data.
+ * Open Android TTS settings so the user can download voice data.
+ * Call this from a "Download Voice" button in the UI.
+ */
+export async function openTTSSettings(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    const IntentLauncher = await import('expo-intent-launcher');
+    await IntentLauncher.startActivityAsync('com.android.settings.TTS_SETTINGS');
+  } catch {
+    // Fallback to generic settings
+    try {
+      const { Linking } = await import('react-native');
+      await Linking.openSettings();
+    } catch { /* ignore */ }
+  }
+}
+
+/**
+ * Warm up TTS engine by speaking a real phrase in the target language.
+ * Google TTS auto-downloads voice data when encountering a new language.
  */
 function warmupTTS(baseLang: string, locale: string) {
-  const phrase = WARMUP_PHRASES[baseLang] ?? ' ';
+  const phrase = WARMUP_PHRASES[baseLang] ?? 'Ready.';
   try {
     Speech.speak(phrase, {
       language: locale,
       rate: 1.0,
       pitch: 1.0,
-      volume: 0.01, // Near-silent
+      volume: 0.01, // Near-silent so user doesn't hear the warmup
     });
+    console.warn(`[VoiceManager] Warmup speak sent for ${locale}`);
   } catch {
-    // Ignore — warmup is best-effort
+    // Ignore — best-effort
   }
 }

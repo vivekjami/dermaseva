@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
 import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
-import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
+import { ensureTTSVoiceForLanguage, openTTSSettings } from '@/modules/tts/voice-manager';
 
 const MAX_CHARS = 1200;
 
@@ -493,6 +493,19 @@ export default function VoiceScreen() {
           <View style={[styles.followUpBanner, { backgroundColor: '#fce4ec', borderColor: '#e53935' }]}>
             <Text style={styles.followUpText}>📡 On-device speech not supported — using cloud</Text>
           </View>
+        )}
+
+        {/* TTS Voice Download — opens Android TTS settings for voice data */}
+        {selectedLanguage !== 'en-US' && selectedLanguage !== 'en' && (
+          <TouchableOpacity
+            style={[styles.followUpBanner, { backgroundColor: '#e8f5e9', borderColor: '#43a047' }]}
+            onPress={() => openTTSSettings()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.followUpText}>
+              🔊 Tap to open Voice Settings and download high-quality voice for this language
+            </Text>
+          </TouchableOpacity>
         )}
 
         {/* Mode Toggle */}
