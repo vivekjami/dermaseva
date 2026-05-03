@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
 import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
+import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
 
 const MAX_CHARS = 1200;
 
@@ -226,6 +227,8 @@ export default function VoiceScreen() {
     setSelectedLanguage(langCode);
     setLanguage(appCode);
     i18n.changeLanguage(appCode);
+    // Trigger TTS voice download for selected language (runs in background)
+    ensureTTSVoiceForLanguage(appCode).catch(() => {});
     // Check if this language's offline model is installed (no download dialog)
     if (isLocaleInstalled(langCode, installedLocales)) {
       setSpeechModelStatus('available');

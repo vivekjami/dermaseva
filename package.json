@@ -19,6 +19,7 @@
     "expo-constants": "~18.0.13",
     "expo-file-system": "~19.0.21",
     "expo-image-manipulator": "~14.0.8",
+    "expo-intent-launcher": "~13.0.8",
     "expo-linking": "~8.0.12",
     "expo-media-library": "~18.2.1",
     "expo-network": "~8.0.8",

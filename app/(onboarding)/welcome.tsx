@@ -7,6 +7,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type WorkerType } from '@/store/app-store';
 import { isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
+import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
 
 const LANGUAGES = [
   { label: 'English', code: 'en', native: 'English' },
@@ -51,6 +52,8 @@ export default function WelcomeScreen() {
     setSelectedLang(code);
     setLanguage(code);
     i18n.changeLanguage(code);
+    // Automatically trigger TTS voice download for this language in background
+    ensureTTSVoiceForLanguage(code).catch(() => {});
   };
 
   const handleRoleSelect = (role: WorkerType) => {
