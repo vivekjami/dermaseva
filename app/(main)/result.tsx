@@ -11,7 +11,7 @@ import { getHistory, saveHistory, buildHistoryContext } from '@/modules/db/patie
 
 // llama.cpp engine
 import {
-  runInference, runMockInference,
+  runStreamingInference, runMockInference,
   isModelLoaded, isModelDownloaded, loadModel,
 } from '@/modules/ai/llama-engine';
 
@@ -68,6 +68,7 @@ export default function ResultScreen() {
   const [otcOverridden, setOtcOverridden] = useState(false);
   const [otcRule, setOtcRule] = useState<import('@/modules/safety/otc-rules').OtcRule | null>(null);
   const [, setAnalysisError] = useState('');
+  const [streamingText, setStreamingText] = useState(''); // Live streaming tokens
   const hasStartedAnalysis = useRef(false);
 
   // ─── Load from history flow ───────────────────────────────────────────────
@@ -304,10 +305,16 @@ export default function ResultScreen() {
       } else {
         setInferenceSource('llama');
         try {
-          const output = await runInference({
-            prompt: fullPrompt,
-            language: voiceLang ?? appLanguage ?? 'en',
-          });
+          // Use streaming inference for real-time token display
+          const output = await runStreamingInference(
+            {
+              prompt: fullPrompt,
+              language: voiceLang ?? appLanguage ?? 'en',
+            },
+            (_token, accumulated) => {
+              setStreamingText(accumulated);
+            },
+          );
           rawText = output.rawText;
           elapsed = output.inferenceTimeMs;
         } catch (inferenceErr: unknown) {
@@ -405,17 +412,33 @@ export default function ResultScreen() {
     }
   }
 
-  // ── Loading / Analyzing ───────────────────────────────────────────────────
+  // ── Loading / Analyzing ──────────────────────────────────────────────────────────────
   if (inferenceState === 'loading_model' || inferenceState === 'running') {
     return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#01696f" />
-        <Text style={styles.loadingText}>
-          {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing with AI…'}
-        </Text>
-        <Text style={styles.loadingSubtext}>
-          {inferenceState === 'running' ? 'This may take 10–30 seconds' : 'Memory-mapping model from disk'}
-        </Text>
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 48 }}>
+          <View style={{ alignItems: 'center', marginBottom: 16 }}>
+            <ActivityIndicator size="large" color="#01696f" />
+            <Text style={styles.loadingText}>
+              {inferenceState === 'loading_model' ? 'Loading Gemma 4 E2B…' : 'Analyzing with AI…'}
+            </Text>
+            <Text style={styles.loadingSubtext}>
+              {inferenceState === 'running'
+                ? 'Watch the AI thinking in real-time below'
+                : 'Memory-mapping model from disk'}
+            </Text>
+          </View>
+
+          {/* Live streaming tokens */}
+          {inferenceState === 'running' && streamingText.length > 0 && (
+            <View style={styles.streamingContainer}>
+              <Text style={styles.streamingLabel}>⚡ AI Output (live)</Text>
+              <ScrollView style={styles.streamingScroll} nestedScrollEnabled>
+                <Text style={styles.streamingText}>{streamingText}█</Text>
+              </ScrollView>
+            </View>
+          )}
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -660,4 +683,27 @@ const styles = StyleSheet.create({
   },
   followUpBtnText: { color: '#01696f', fontSize: 16, fontWeight: '700' },
   debugText: { fontSize: 11, color: '#bab9b4', textAlign: 'center', marginTop: 8 },
+  // Streaming output
+  streamingContainer: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+  },
+  streamingLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4fc3f7',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  streamingScroll: {
+    maxHeight: 300,
+  },
+  streamingText: {
+    fontSize: 13,
+    color: '#e0e0e0',
+    fontFamily: 'monospace',
+    lineHeight: 20,
+  },
 });

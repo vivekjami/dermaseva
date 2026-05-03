@@ -4,7 +4,7 @@
  * Fully offline after first model download. Memory-mapped loading.
  */
 
-import { initLlama, type LlamaContext } from 'llama.rn';
+import { initLlama, type LlamaContext, type TokenData } from 'llama.rn';
 import * as FileSystem from 'expo-file-system/legacy';
 import { verifyModelIntegrity } from '@/modules/security/model-verifier';
 import {
@@ -12,6 +12,8 @@ import {
 } from '@/modules/ai/model-constants';
 import { findCandidateConditions } from '@/modules/ai/knowledge-base';
 import { translateArray, ACTION_STEPS, KEY_SIGNS } from '@/modules/i18n/medical-translations';
+
+export type { TokenData };
 
 export { MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH };
 
@@ -193,16 +195,16 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
         { role: 'system', content: systemPrompt },
         { role: 'user', content: input.prompt },
       ],
-      jinja: true,              // Required for messages API with Gemma 4 chat template
-      enable_thinking: false,   // Disable thinking blocks — we need pure JSON output
-      n_predict: 300,            // JSON output is ~150 tokens; 300 gives safe headroom
-      n_threads: 4,             // All CPU cores per completion
-      temperature: 0.1,         // Deterministic JSON output
+      jinja: true,
+      enable_thinking: false,
+      n_predict: 300,
+      n_threads: 4,
+      temperature: 0.1,
       top_k: 40,
       top_p: 0.95,
       min_p: 0.05,
-      penalty_repeat: 1.1,      // Prevent token loops
-      seed: 42,                 // Reproducible output
+      penalty_repeat: 1.1,
+      seed: 42,
       stop: STOP_WORDS,
     });
 
@@ -213,6 +215,62 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`[LlamaEngine] Inference failed: ${msg}`);
+  }
+}
+
+/**
+ * Streaming inference — calls onToken for every generated token.
+ * This allows the UI to show text appearing in real-time.
+ */
+export async function runStreamingInference(
+  input: InferenceInput,
+  onToken: (token: string, accumulated: string) => void,
+): Promise<InferenceOutput> {
+  if (_context === null) {
+    throw new Error('[LlamaEngine] Not loaded. Call loadModel() first.');
+  }
+
+  const start = Date.now();
+  const langName = getLangName(input.language);
+  const systemPrompt = langName !== 'English'
+    ? SYSTEM_PROMPT + `\n- CRITICAL: You MUST respond in ${langName}. All text in actionSteps, doctorReferral, keySigns, and followUpPlan must be written in ${langName} script.`
+    : SYSTEM_PROMPT;
+
+  let accumulated = '';
+
+  try {
+    const result = await _context.completion(
+      {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: input.prompt },
+        ],
+        jinja: true,
+        enable_thinking: false,
+        n_predict: 300,
+        n_threads: 4,
+        temperature: 0.1,
+        top_k: 40,
+        top_p: 0.95,
+        min_p: 0.05,
+        penalty_repeat: 1.1,
+        seed: 42,
+        stop: STOP_WORDS,
+      },
+      (data: TokenData) => {
+        const token = data.token ?? '';
+        accumulated += token;
+        onToken(token, accumulated);
+      },
+    );
+
+    return {
+      rawText: result.text,
+      inferenceTimeMs: Date.now() - start,
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`[LlamaEngine] Streaming inference failed: ${msg}`);
   }
 }
 
