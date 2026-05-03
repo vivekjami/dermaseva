@@ -90,55 +90,40 @@ export async function releaseWhisperModel(): Promise<void> {
   }
 }
 
-let realtimeSession: { stop: () => Promise<void>, promise: Promise<{ text: string }> } | null = null;
-
-export async function startWhisperRecording(locale: string): Promise<void> {
+export async function transcribeAudio(
+  audioPath: string,
+  locale: string,
+): Promise<{ text: string }> {
   if (!ctx) throw new Error('Whisper not loaded');
-  if (realtimeSession) throw new Error('Whisper recording already in progress');
 
   const lang = WHISPER_LANG_MAP[locale] ?? locale.split('-')[0] ?? 'en';
-  console.warn(`[Whisper] Starting native realtime recording: lang=${lang}`);
+  console.warn(`[Whisper] Transcribing: lang=${lang}, path=${audioPath}`);
 
-  let resolveFinal: (res: { text: string }) => void;
-  const promise = new Promise<{ text: string }>((res) => {
-    resolveFinal = res;
-  });
-
-  const { stop, subscribe } = await ctx.transcribeRealtime({
+  const { promise } = ctx.transcribe(audioPath, {
     language: lang,
+    maxLen: 0,
     tokenTimestamps: false,
-    beamSize: 1,        // Greedy decoding for speed
-    bestOf: 1,          // Only keep 1 candidate
-    temperature: 0.0,   // Deterministic
-    temperatureInc: 0.0, // Disable temp fallback
+    beamSize: 1,
+    bestOf: 1,
+    temperature: 0.0,
+    temperatureInc: 0.0,
   });
 
-  subscribe((evt) => {
-    if (!evt.isCapturing) {
-      console.warn(`[Whisper] Realtime ended: "${evt.data?.result}", aborted=${evt.isStoppedByAction}`);
-      let text = (evt.data?.result ?? '').trim();
-      
-      const lowerText = text.toLowerCase().replace(/[^a-z]/g, '');
-      const hallucinations = ['skull', 'silence', 'blank', 'thankyou', 'thanksforwatching', 'subsby', 'subtitlesby'];
-      if (hallucinations.includes(lowerText)) {
-        console.warn(`[Whisper] Filtered hallucination: "${text}"`);
-        text = '';
-      }
-      
-      resolveFinal({ text });
-    }
-  });
+  const result = await promise;
+  console.warn(`[Whisper] Result: "${result.result}", lang=${result.language}, aborted=${result.isAborted}`);
 
-  realtimeSession = { stop, promise };
-}
+  if (result.isAborted) {
+    throw new Error('Transcription was aborted');
+  }
 
-export async function stopWhisperRecording(): Promise<{ text: string }> {
-  if (!realtimeSession) throw new Error('No whisper recording in progress');
-  console.warn('[Whisper] Stopping realtime recording...');
+  let text = (result.result ?? '').trim();
   
-  await realtimeSession.stop();
-  const result = await realtimeSession.promise;
-  realtimeSession = null;
-  
-  return result;
+  const lowerText = text.toLowerCase().replace(/[^a-z]/g, '');
+  const hallucinations = ['skull', 'silence', 'blank', 'thankyou', 'thanksforwatching', 'subsby', 'subtitlesby'];
+  if (hallucinations.includes(lowerText)) {
+    console.warn(`[Whisper] Filtered hallucination: "${text}"`);
+    text = '';
+  }
+
+  return { text };
 }

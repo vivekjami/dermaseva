@@ -206,6 +206,7 @@ export default function VoiceScreen() {
   });
 
   useSpeechRecognitionEvent('result', (event) => {
+    if (isUsingWhisper) return;
     if (event.results && event.results.length > 0) {
       const latestTranscript = event.results[0]?.transcript ?? '';
       if (event.isFinal) {
@@ -217,8 +218,46 @@ export default function VoiceScreen() {
     }
   });
 
+  useSpeechRecognitionEvent('audioend', (event) => {
+    if (isUsingWhisper && isListening) {
+      setIsListening(false);
+      setIsTranscribing(true);
+
+      const audioPath = event.uri;
+      if (!audioPath) {
+        setError('Recording failed — no audio captured');
+        setIsTranscribing(false);
+        setIsUsingWhisper(false);
+        return;
+      }
+
+      (async () => {
+        try {
+          const result = await transcribeAudio(audioPath, selectedLanguage);
+          if (result.text.trim()) {
+            setTranscription((prev) => prev.trim() ? `${prev} ${result.text}` : result.text);
+          } else {
+            setError(t('voice.speechFailed') || 'No speech detected');
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setError(`Transcription failed: ${msg}`);
+        } finally {
+          setIsTranscribing(false);
+          setIsUsingWhisper(false);
+        }
+      })();
+    }
+  });
+
   useSpeechRecognitionEvent('error', (event) => {
     console.error('[Voice] Error:', event.error, event.message);
+    
+    if (isUsingWhisper) {
+      // Ignore Google's no-match or network errors when using it just as a microphone
+      if (event.error !== 'no-speech') return;
+    }
+
     if (event.error === 'no-speech') {
       setIsListening(false);
       return;
@@ -231,17 +270,20 @@ export default function VoiceScreen() {
 
       if (isWhisperLoaded()) {
         // Auto-retry with Whisper
-        (async () => {
-          try {
-            await startWhisperRecording(selectedLanguage);
-            setIsUsingWhisper(true);
-            setIsListening(true);
-            setError('');
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            setError(`Could not start Whisper recording: ${msg}`);
-          }
-        })();
+        try {
+          setIsUsingWhisper(true);
+          setIsListening(true);
+          setError('');
+          ExpoSpeechRecognitionModule.start({
+            lang: 'en-US',
+            requiresOnDeviceRecognition: true,
+            interimResults: false,
+            recordingOptions: { persist: true },
+          });
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setError(`Could not start Whisper recording: ${msg}`);
+        }
         return;
       }
 
@@ -361,25 +403,8 @@ export default function VoiceScreen() {
 
     // ─── STOP: If using Whisper, stop recording and transcribe ───
     if (isUsingWhisper && isListening) {
-      setIsListening(false);
-      setIsTranscribing(true);
-      try {
-        const result = await stopWhisperRecording();
-        if (result.text.trim()) {
-          setTranscription((prev) => {
-            if (!prev.trim()) return result.text;
-            return `${prev} ${result.text}`;
-          });
-        } else {
-          setError(t('voice.speechFailed') || 'No speech detected');
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(`Transcription failed: ${msg}`);
-      } finally {
-        setIsTranscribing(false);
-        setIsUsingWhisper(false);
-      }
+      // Stopping the module will fire the 'audioend' event, which handles transcription
+      ExpoSpeechRecognitionModule.stop();
       return;
     }
 
@@ -445,9 +470,14 @@ export default function VoiceScreen() {
       // Last resort: Whisper
       if (isWhisperLoaded()) {
         try {
-          await startWhisperRecording(selectedLanguage);
           setIsUsingWhisper(true);
           setIsListening(true);
+          ExpoSpeechRecognitionModule.start({
+            lang: 'en-US',
+            requiresOnDeviceRecognition: true,
+            interimResults: false,
+            recordingOptions: { persist: true },
+          });
           return;
         } catch {
           // Fall through to error
@@ -489,9 +519,14 @@ export default function VoiceScreen() {
       // Offline — use Whisper
       if (isWhisperLoaded()) {
         try {
-          await startWhisperRecording(selectedLanguage);
           setIsUsingWhisper(true);
           setIsListening(true);
+          ExpoSpeechRecognitionModule.start({
+            lang: 'en-US',
+            requiresOnDeviceRecognition: true,
+            interimResults: false,
+            recordingOptions: { persist: true },
+          });
           return;
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
