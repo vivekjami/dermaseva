@@ -100,14 +100,19 @@ export default function VoiceScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check which offline STT models are installed (Google)
+  // Check which offline STT models are actually downloaded (Google)
   const refreshInstalledLocales = async () => {
     try {
       const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
+      // IMPORTANT: use installedLocales (actually downloaded offline models)
+      // NOT locales (all supported = online + offline).
+      // locales.locales includes Telugu etc. via cloud, but they don't work offline.
+      const offlineList = locales.installedLocales ?? [];
       const installed = new Set<string>(
-        (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
+        offlineList.map((l: string) => l.toLowerCase())
       );
       setInstalledLocales(installed);
+      console.warn('[Voice] Installed offline locales:', [...installed].join(', '));
     } catch {
       // If check fails, assume empty — cloud will handle
     }
