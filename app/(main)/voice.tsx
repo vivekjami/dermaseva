@@ -1,19 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Animated, Keyboard, Alert,
+  ScrollView, Animated, Keyboard, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+import * as Network from 'expo-network';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
 import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
 import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
+import {
+  isWhisperLoaded, isWhisperDownloaded, downloadWhisperModel,
+  loadWhisperModel, transcribeAudio,
+} from '@/modules/stt/whisper-engine';
+import { startRecording, stopRecording } from '@/modules/stt/audio-recorder';
 
 const MAX_CHARS = 1200;
 
@@ -59,6 +65,11 @@ export default function VoiceScreen() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [installedLocales, setInstalledLocales] = useState<Set<string>>(new Set());
   const [downloadingLocale, setDownloadingLocale] = useState<string | null>(null);
+  // Whisper fallback state
+  const [whisperStatus, setWhisperStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
+  const [whisperProgress, setWhisperProgress] = useState(0);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isUsingWhisper, setIsUsingWhisper] = useState(false);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
@@ -89,7 +100,7 @@ export default function VoiceScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check which offline STT models are installed
+  // Check which offline STT models are installed (Google)
   const refreshInstalledLocales = async () => {
     try {
       const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
@@ -106,10 +117,38 @@ export default function VoiceScreen() {
     refreshInstalledLocales();
   }, []);
 
-  // Helper: check if a locale is in the installed set
+  // Check Whisper model status on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        if (isWhisperLoaded()) { setWhisperStatus('loaded'); return; }
+        const downloaded = await isWhisperDownloaded();
+        if (!downloaded) { setWhisperStatus('not_downloaded'); return; }
+        setWhisperStatus('loading');
+        await loadWhisperModel();
+        setWhisperStatus('loaded');
+      } catch {
+        setWhisperStatus('not_downloaded');
+      }
+    })();
+  }, []);
+
+  // Helper: check if a locale has Google offline model
   function isLocaleInstalled(locale: string): boolean {
     const baseLang = locale.split('-')[0].toLowerCase();
     return [...installedLocales].some((l) => l.startsWith(baseLang));
+  }
+
+  // Helper: check if we need Whisper for this locale
+  // (offline + no Google pack)
+  async function needsWhisperFallback(locale: string): Promise<boolean> {
+    if (isLocaleInstalled(locale)) return false; // Google has offline model
+    try {
+      const state = await Network.getNetworkStateAsync();
+      return !state.isConnected; // Needs Whisper only if offline
+    } catch {
+      return false; // Can't check network, assume online
+    }
   }
 
   // ─── Speech recognition events (expo-speech-recognition) ──────────────────
@@ -166,44 +205,114 @@ export default function VoiceScreen() {
     setSelectedLanguage(langCode);
     setLanguage(appCode);
     i18n.changeLanguage(appCode);
-    // Silent TTS warmup — no UI, no intents, just a near-silent speak
+    // Silent TTS warmup
     ensureTTSVoiceForLanguage(appCode).catch(() => {});
 
-    // If STT model is NOT installed offline, trigger download for this language
+    // If Google doesn't have offline model, try download (only for en/hi which Google supports)
     if (!isLocaleInstalled(langCode)) {
-      setDownloadingLocale(langCode);
-      try {
-        const result = await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
-          locale: langCode,
-        });
-        console.warn(`[Voice] STT download for ${langCode}:`, result?.status);
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn(`[Voice] STT download failed for ${langCode}:`, msg);
-        const langName = VOICE_LANGUAGES.find(l => l.code === langCode)?.label ?? langCode;
-        Alert.alert(
-          'Offline Download',
-          `Could not download offline speech model for ${langName}. ` +
-          'Voice input will use cloud recognition instead (requires internet).\n\n' +
-          'You can try again by selecting this language later.',
-        );
+      // Only try Google download for languages Google actually supports offline
+      const googleOfflineSupported = ['en-US', 'hi-IN'];
+      if (googleOfflineSupported.includes(langCode)) {
+        setDownloadingLocale(langCode);
+        try {
+          await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale: langCode });
+        } catch {
+          // Silently fail — cloud will handle
+        }
+        setDownloadingLocale(null);
+        await refreshInstalledLocales();
       }
-      setDownloadingLocale(null);
-      // Re-check installed locales after download attempt
-      await refreshInstalledLocales();
     }
   };
 
-  // Toggle listening — uses on-device if model is installed, cloud otherwise
+  // Download Whisper model for offline regional language support
+  const handleDownloadWhisper = async () => {
+    setWhisperStatus('downloading');
+    setWhisperProgress(0);
+    try {
+      await downloadWhisperModel((pct) => setWhisperProgress(pct));
+      setWhisperStatus('loading');
+      await loadWhisperModel();
+      setWhisperStatus('loaded');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      Alert.alert('Download Failed', `Could not download speech model: ${msg}`);
+      setWhisperStatus('not_downloaded');
+    }
+  };
+
+  /**
+   * Toggle listening — HYBRID approach:
+   * 1. Online → expo-speech-recognition (instant streaming, any language)
+   * 2. Offline + Google has model (en/hi) → expo-speech-recognition on-device
+   * 3. Offline + no Google model (te/ta/kn/mr) → Whisper.rn fallback
+   */
   const toggleListening = async () => {
     setError('');
     Keyboard.dismiss();
 
+    // ─── If using Whisper fallback, handle stop ───
+    if (isUsingWhisper && isListening) {
+      setIsListening(false);
+      setIsTranscribing(true);
+      try {
+        const audioPath = await stopRecording();
+        if (!audioPath) {
+          setError('Recording failed — no audio captured');
+          setIsTranscribing(false);
+          return;
+        }
+        const result = await transcribeAudio(audioPath, selectedLanguage);
+        if (result.text.trim()) {
+          setTranscription((prev) => {
+            if (!prev.trim()) return result.text;
+            return `${prev} ${result.text}`;
+          });
+        } else {
+          setError(t('voice.speechFailed') || 'No speech detected');
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(`Transcription failed: ${msg}`);
+      } finally {
+        setIsTranscribing(false);
+        setIsUsingWhisper(false);
+      }
+      return;
+    }
+
+    // ─── If using expo-speech-recognition, handle stop ───
     if (isListening) {
       ExpoSpeechRecognitionModule.stop();
       return;
     }
 
+    // ─── Start recording ───
+    // Check if we need Whisper fallback (offline + no Google model)
+    const useWhisper = await needsWhisperFallback(selectedLanguage);
+
+    if (useWhisper) {
+      // Whisper fallback path
+      if (!isWhisperLoaded()) {
+        if (whisperStatus === 'not_downloaded') {
+          setError('You are offline and this language needs the Whisper model. Please download it while online.');
+        } else {
+          setError('Speech model is still loading. Please wait.');
+        }
+        return;
+      }
+      try {
+        await startRecording();
+        setIsUsingWhisper(true);
+        setIsListening(true);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(`Could not start recording: ${msg}`);
+      }
+      return;
+    }
+
+    // ─── Default: expo-speech-recognition (streaming) ───
     try {
       const permResult = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!permResult.granted) {
@@ -219,7 +328,6 @@ export default function VoiceScreen() {
         maxAlternatives: 1,
         continuous: false,
         addsPunctuation: true,
-        // Use on-device if we have the model, cloud otherwise
         requiresOnDeviceRecognition: offlineAvailable,
       });
     } catch (e: unknown) {
@@ -237,7 +345,7 @@ export default function VoiceScreen() {
           });
           return;
         } catch {
-          // Fall through to error below
+          // Fall through to error
         }
       }
       setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
@@ -488,9 +596,31 @@ export default function VoiceScreen() {
         </View>
       </ScrollView>
 
+      {/* Whisper model download banner — shown when not downloaded */}
+      {whisperStatus === 'not_downloaded' && (
+        <TouchableOpacity
+          style={styles.whisperBanner}
+          onPress={handleDownloadWhisper}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.whisperBannerText}>
+            📥 Download offline speech model (~142 MB) for regional languages in airplane mode
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {whisperStatus === 'downloading' && (
+        <View style={styles.whisperBanner}>
+          <ActivityIndicator size="small" color="#01696f" />
+          <Text style={styles.whisperBannerText}>
+            Downloading speech model... {whisperProgress}%
+          </Text>
+        </View>
+      )}
+
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
-        {inputMode === 'voice' && (
+        {inputMode === 'voice' && !isTranscribing && (
           <Animated.View style={[styles.micContainer, { transform: [{ scale: pulseAnim }] }]}>
             <TouchableOpacity
               style={[styles.recordButton, isListening && styles.recordingButton]}
@@ -499,10 +629,19 @@ export default function VoiceScreen() {
             >
               <Text style={styles.micIcon}>{isListening ? '⏹️' : '🎙️'}</Text>
               <Text style={styles.recordButtonText}>
-                {isListening ? t('voice.tapToStop') : t('voice.tapToSpeak')}
+                {isListening
+                  ? (isUsingWhisper ? 'Recording… Tap to transcribe' : t('voice.tapToStop'))
+                  : t('voice.tapToSpeak')}
               </Text>
             </TouchableOpacity>
           </Animated.View>
+        )}
+
+        {inputMode === 'voice' && isTranscribing && (
+          <View style={[styles.recordButton, { backgroundColor: '#37474F' }]}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.recordButtonText}>Transcribing speech...</Text>
+          </View>
         )}
 
         <TouchableOpacity
@@ -669,4 +808,11 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: { backgroundColor: '#bab9b4', shadowOpacity: 0 },
   submitButtonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+
+  whisperBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#e6f5f5', borderTopWidth: 1, borderTopColor: '#cedcd8',
+    paddingVertical: 10, paddingHorizontal: 16,
+  },
+  whisperBannerText: { fontSize: 13, color: '#01696f', flex: 1, lineHeight: 18 },
 });
