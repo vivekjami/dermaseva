@@ -552,7 +552,12 @@ export default function ResultScreen() {
         {/* Follow-up button */}
         <TouchableOpacity
           style={styles.followUpBtn}
-          onPress={() => router.back()}
+          onPress={() => {
+            router.replace({
+              pathname: '/(main)/voice',
+              params: { followUp: 'true' },
+            } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+          }}
           activeOpacity={0.8}
         >
           <Text style={styles.followUpBtnText}>{t('result.followUp')}</Text>

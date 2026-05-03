@@ -8,7 +8,7 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
@@ -36,6 +36,7 @@ type InputMode = 'voice' | 'text';
 
 export default function VoiceScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ followUp?: string }>();
   const { t, i18n } = useTranslation();
   const {
     language: appLanguage, workerType, category, conversationHistory,
@@ -50,7 +51,7 @@ export default function VoiceScreen() {
   );
   const [error, setError] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [isFollowUp, setIsFollowUp] = useState(false);
+  const [isFollowUp, setIsFollowUp] = useState(params.followUp === 'true');
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
@@ -179,6 +180,13 @@ export default function VoiceScreen() {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         console.warn(`[Voice] STT download failed for ${langCode}:`, msg);
+        const langName = VOICE_LANGUAGES.find(l => l.code === langCode)?.label ?? langCode;
+        Alert.alert(
+          'Offline Download',
+          `Could not download offline speech model for ${langName}. ` +
+          'Voice input will use cloud recognition instead (requires internet).\n\n' +
+          'You can try again by selecting this language later.',
+        );
       }
       setDownloadingLocale(null);
       // Re-check installed locales after download attempt
