@@ -75,6 +75,8 @@ export default function VoiceScreen() {
   const [whisperProgress, setWhisperProgress] = useState(0);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isUsingWhisper, setIsUsingWhisper] = useState(false);
+  // When Google cloud fails for a Whisper language, this ref triggers auto-fallback
+  const shouldFallbackToWhisper = useRef(false);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
@@ -196,6 +198,8 @@ export default function VoiceScreen() {
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
     setError('');
+    // Google started successfully — no need to fall back to Whisper
+    shouldFallbackToWhisper.current = false;
   });
 
   useSpeechRecognitionEvent('end', () => {
@@ -220,6 +224,40 @@ export default function VoiceScreen() {
       setIsListening(false);
       return;
     }
+
+    // If Google cloud failed for a Whisper language, auto-fallback to Whisper
+    if (shouldFallbackToWhisper.current) {
+      shouldFallbackToWhisper.current = false;
+      setIsListening(false);
+
+      if (isWhisperLoaded()) {
+        // Auto-retry with Whisper
+        (async () => {
+          try {
+            await startRecording();
+            setIsUsingWhisper(true);
+            setIsListening(true);
+            setError('');
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setError(`Could not start Whisper recording: ${msg}`);
+          }
+        })();
+        return;
+      }
+
+      // Whisper not available — show helpful error
+      if (whisperStatus === 'not_downloaded') {
+        setError(
+          'Online recognition failed (no internet?).\n' +
+          'Download the offline speech model below to use this language without internet.'
+        );
+      } else {
+        setError('Online recognition failed. Offline model is loading...');
+      }
+      return;
+    }
+
     setError(event.message || t('voice.speechFailed'));
     setIsListening(false);
   });
@@ -436,7 +474,9 @@ export default function VoiceScreen() {
     } else {
       // ══════ WHISPER LANGUAGE (te-IN, ta-IN, kn-IN, mr-IN) ══════
       if (isOnline) {
-        // Use Google cloud — works for ALL languages when online
+        // Try Google cloud — but set fallback flag so if it fails async,
+        // the error handler will auto-retry with Whisper
+        shouldFallbackToWhisper.current = true;
         try {
           ExpoSpeechRecognitionModule.start({
             lang: selectedLanguage,
@@ -448,7 +488,8 @@ export default function VoiceScreen() {
           });
           return;
         } catch {
-          // Cloud failed, try Whisper below
+          // Sync failure — clear flag and try Whisper directly below
+          shouldFallbackToWhisper.current = false;
         }
       }
 
