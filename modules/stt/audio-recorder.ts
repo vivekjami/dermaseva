@@ -1,7 +1,8 @@
 /**
  * audio-recorder.ts — Records microphone audio via expo-av.
  *
- * Outputs 16kHz mono WAV — the format Whisper expects.
+ * Android: outputs 16kHz mono M4A (AAC) — whisper.rn decodes it natively.
+ * iOS: outputs 16kHz mono WAV (PCM) — the format Whisper expects directly.
  * Used only as part of the Whisper fallback path.
  */
 
@@ -27,12 +28,16 @@ export async function startRecording(): Promise<void> {
   await recording.prepareToRecordAsync({
     isMeteringEnabled: false,
     android: {
-      extension: '.wav',
-      outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-      audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+      // Android DEFAULT encoder produces AMR, not WAV PCM.
+      // whisper.rn can decode common formats (wav, mp4/aac, etc.)
+      // via its native layer, so we use MPEG_4 + AAC which is
+      // universally supported on Android and decodable by whisper.rn.
+      extension: '.m4a',
+      outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+      audioEncoder: Audio.AndroidAudioEncoder.AAC,
       sampleRate: 16000,
       numberOfChannels: 1,
-      bitRate: 256000,
+      bitRate: 128000,
     },
     ios: {
       extension: '.wav',
@@ -49,6 +54,7 @@ export async function startRecording(): Promise<void> {
   });
 
   await recording.startAsync();
+  console.warn('[AudioRecorder] Recording started');
 }
 
 /**

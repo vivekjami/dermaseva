@@ -18,9 +18,8 @@ import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/mo
 import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
 import {
   isWhisperLoaded, isWhisperDownloaded, downloadWhisperModel,
-  loadWhisperModel, transcribeAudio,
+  loadWhisperModel, startWhisperRecording, stopWhisperRecording
 } from '@/modules/stt/whisper-engine';
-import { startRecording, stopRecording } from '@/modules/stt/audio-recorder';
 
 const MAX_CHARS = 1200;
 
@@ -234,7 +233,7 @@ export default function VoiceScreen() {
         // Auto-retry with Whisper
         (async () => {
           try {
-            await startRecording();
+            await startWhisperRecording(selectedLanguage);
             setIsUsingWhisper(true);
             setIsListening(true);
             setError('');
@@ -365,13 +364,7 @@ export default function VoiceScreen() {
       setIsListening(false);
       setIsTranscribing(true);
       try {
-        const audioPath = await stopRecording();
-        if (!audioPath) {
-          setError('Recording failed — no audio captured');
-          setIsTranscribing(false);
-          return;
-        }
-        const result = await transcribeAudio(audioPath, selectedLanguage);
+        const result = await stopWhisperRecording();
         if (result.text.trim()) {
           setTranscription((prev) => {
             if (!prev.trim()) return result.text;
@@ -452,7 +445,7 @@ export default function VoiceScreen() {
       // Last resort: Whisper
       if (isWhisperLoaded()) {
         try {
-          await startRecording();
+          await startWhisperRecording(selectedLanguage);
           setIsUsingWhisper(true);
           setIsListening(true);
           return;
@@ -496,7 +489,7 @@ export default function VoiceScreen() {
       // Offline — use Whisper
       if (isWhisperLoaded()) {
         try {
-          await startRecording();
+          await startWhisperRecording(selectedLanguage);
           setIsUsingWhisper(true);
           setIsListening(true);
           return;
