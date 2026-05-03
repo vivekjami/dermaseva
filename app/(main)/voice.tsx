@@ -45,6 +45,35 @@ const CATEGORIES: { key: Category; emoji: string; labelKey: string }[] = [
 
 type InputMode = 'voice' | 'text';
 
+// ─── Track which Google offline models WE have downloaded ────────────────
+// We do NOT trust getSupportedLocales().installedLocales — it's unreliable
+// (e.g. English shows as "installed" on new devices even when it's not).
+// Instead, we track successful downloads ourselves using a local JSON file.
+const DOWNLOAD_TRACKER_PATH = `${FileSystem.documentDirectory}stt-downloads.json`;
+
+const loadDownloadTracker = async (): Promise<Set<string>> => {
+  try {
+    const info = await FileSystem.getInfoAsync(DOWNLOAD_TRACKER_PATH);
+    if (!info.exists) return new Set();
+    const json = await FileSystem.readAsStringAsync(DOWNLOAD_TRACKER_PATH);
+    const arr = JSON.parse(json);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const saveDownloadTracker = async (locales: Set<string>) => {
+  try {
+    await FileSystem.writeAsStringAsync(
+      DOWNLOAD_TRACKER_PATH,
+      JSON.stringify([...locales]),
+    );
+  } catch (e) {
+    console.warn('[Voice] Failed to save download tracker:', e);
+  }
+};
+
 export default function VoiceScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ followUp?: string }>();
@@ -106,35 +135,6 @@ export default function VoiceScreen() {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
-
-  // ─── Track which Google offline models WE have downloaded ────────────────
-  // We do NOT trust getSupportedLocales().installedLocales — it's unreliable
-  // (e.g. English shows as "installed" on new devices even when it's not).
-  // Instead, we track successful downloads ourselves using a local JSON file.
-  const DOWNLOAD_TRACKER_PATH = `${FileSystem.documentDirectory}stt-downloads.json`;
-
-  const loadDownloadTracker = async (): Promise<Set<string>> => {
-    try {
-      const info = await FileSystem.getInfoAsync(DOWNLOAD_TRACKER_PATH);
-      if (!info.exists) return new Set();
-      const json = await FileSystem.readAsStringAsync(DOWNLOAD_TRACKER_PATH);
-      const arr = JSON.parse(json);
-      return new Set(Array.isArray(arr) ? arr : []);
-    } catch {
-      return new Set();
-    }
-  };
-
-  const saveDownloadTracker = async (locales: Set<string>) => {
-    try {
-      await FileSystem.writeAsStringAsync(
-        DOWNLOAD_TRACKER_PATH,
-        JSON.stringify([...locales]),
-      );
-    } catch (e) {
-      console.warn('[Voice] Failed to save download tracker:', e);
-    }
-  };
 
   const markLocaleDownloaded = async (locale: string) => {
     const current = await loadDownloadTracker();
