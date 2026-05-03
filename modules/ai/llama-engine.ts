@@ -11,6 +11,7 @@ import {
   MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH,
 } from '@/modules/ai/model-constants';
 import { findCandidateConditions } from '@/modules/ai/knowledge-base';
+import { translateArray, ACTION_STEPS, KEY_SIGNS } from '@/modules/i18n/medical-translations';
 
 export { MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH };
 
@@ -285,13 +286,15 @@ export function runMockInference(input: InferenceInput): InferenceOutput {
   }
 
   const best = candidates[0].condition;
+  const translatedKeySigns = translateArray(best.keySigns, langBase, KEY_SIGNS);
+  const translatedActionSteps = translateArray(best.actionSteps, langBase, ACTION_STEPS);
   return {
     rawText: JSON.stringify({
       conditionName: best.name,
       confidence: Math.min(0.85, 0.60 + candidates[0].score * 0.03),
       severity: best.severity,
-      keySigns: best.keySigns,
-      actionSteps: best.actionSteps,
+      keySigns: translatedKeySigns,
+      actionSteps: translatedActionSteps,
       otcSuggestion: best.severity === 'mild' ? best.otc : null,
       doctorReferral: referral,
       needsUrgentReferral: best.severity === 'severe',

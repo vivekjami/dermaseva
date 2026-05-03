@@ -23,6 +23,9 @@ import { isIndexUpToDate, buildIndex } from '@/modules/rag/indexer';
 import { retrieveRelevantChunks, buildRagContext } from '@/modules/rag/retriever';
 import { validateAgainstRag } from '@/modules/rag/validator';
 import { checkOtcEligibility } from '@/modules/safety/otc-rules';
+import {
+  getNarration, translateArray, ACTION_STEPS, KEY_SIGNS,
+} from '@/modules/i18n/medical-translations';
 import { getReferralDecision } from '@/modules/safety/referral-logic';
 import { ReferralCTA } from '@/components/ReferralCTA';
 import { SafetyBanner } from '@/components/SafetyBanner';
@@ -154,9 +157,8 @@ export default function ResultScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symptoms]);
 
-  // ─── Natural structured TTS — reads the full result in logical sections ──────
+  // ─── Natural structured TTS — reads the full result in the user's language ───
   async function speakResult(parsed: ParsedResult, langInput: string) {
-    // Stop any previous speech
     Speech.stop();
 
     const baseLang = langInput.split('-')[0].toLowerCase();
@@ -168,7 +170,6 @@ export default function ResultScreen() {
       const voices = await Speech.getAvailableVoicesAsync();
       const langPreference = [baseLang, 'hi', 'en'];
       for (const lang of langPreference) {
-        // Prefer "Enhanced" or "high" quality voices (Google neural voices)
         const match =
           voices.find(v => v.language.startsWith(lang) && (v.quality === 'Enhanced' || v.name?.toLowerCase().includes('high'))) ??
           voices.find(v => v.language.startsWith(lang));
@@ -183,53 +184,51 @@ export default function ResultScreen() {
     const opts = {
       language: chosenLang,
       voice: chosenVoice,
-      rate: 0.85,   // Slightly slower than normal for field workers
+      rate: 0.85,
       pitch: 1.0,
     };
 
-    // Build a natural narrative script from the parsed result
-    const severityPhrase: Record<string, string> = {
-      mild: 'This appears to be a mild condition.',
-      moderate: 'This is a moderate condition that needs attention.',
-      severe: 'This is a severe condition requiring urgent care.',
-    };
-
-    // Build utterances as an array of strings to speak sequentially
+    // Build utterances using translated narration phrases
+    const lang = baseLang;
     const utterances: string[] = [];
 
-    // 1. Opening — condition and severity
+    // 1. Opening — condition and severity (translated)
+    const severityKey = parsed.severity === 'mild' ? 'mildCondition'
+      : parsed.severity === 'severe' ? 'severeCondition' : 'moderateCondition';
     utterances.push(
-      `Screening complete. The likely condition is ${parsed.conditionName}. ${severityPhrase[parsed.severity] ?? ''}`
+      `${getNarration('screeningComplete', lang)} ${getNarration('likelyCondition', lang)} ${parsed.conditionName}. ${getNarration(severityKey, lang)}`
     );
 
-    // 2. Key signs
+    // 2. Key signs — translate from lookup
     if (parsed.keySigns && parsed.keySigns.length > 0) {
+      const translatedSigns = translateArray(parsed.keySigns, lang, KEY_SIGNS);
       utterances.push(
-        `The patient may show the following signs. ${parsed.keySigns.join('. ')}.`
+        `${getNarration('patientMayShow', lang)} ${translatedSigns.join('. ')}.`
       );
     }
 
-    // 3. Action steps — the most important section
+    // 3. Action steps — translate from lookup
     if (parsed.actionSteps && parsed.actionSteps.length > 0) {
-      utterances.push(`Here is what you should do.`);
-      parsed.actionSteps.forEach((step, i) => {
-        utterances.push(`Step ${i + 1}. ${step}`);
+      const translatedSteps = translateArray(parsed.actionSteps, lang, ACTION_STEPS);
+      utterances.push(getNarration('whatYouShouldDo', lang));
+      translatedSteps.forEach((step, i) => {
+        utterances.push(`${getNarration('step', lang)} ${i + 1}. ${step}`);
       });
     }
 
-    // 4. OTC suggestion if available
+    // 4. OTC suggestion
     if (parsed.otcSuggestion) {
-      utterances.push(`Medication suggestion. ${parsed.otcSuggestion}`);
+      utterances.push(`${getNarration('medicationSuggestion', lang)} ${parsed.otcSuggestion}`);
     }
 
     // 5. Doctor referral
     if (parsed.doctorReferral) {
-      utterances.push(`Regarding doctor visit. ${parsed.doctorReferral}`);
+      utterances.push(`${getNarration('regardingDoctor', lang)} ${parsed.doctorReferral}`);
     }
 
     // 6. Follow-up plan
     if (parsed.followUpPlan) {
-      utterances.push(`Follow up plan. ${parsed.followUpPlan}`);
+      utterances.push(`${getNarration('followUpPlan', lang)} ${parsed.followUpPlan}`);
     }
 
     // Speak utterances sequentially using chained onDone callbacks
@@ -238,7 +237,7 @@ export default function ResultScreen() {
       Speech.speak(utterances[index], {
         ...opts,
         onDone: () => speakSequentially(index + 1),
-        onError: () => speakSequentially(index + 1), // skip failed segment
+        onError: () => speakSequentially(index + 1),
       });
     };
 
