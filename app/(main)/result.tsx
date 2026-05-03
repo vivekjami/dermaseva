@@ -163,27 +163,29 @@ export default function ResultScreen() {
 
     const baseLang = langInput.split('-')[0].toLowerCase();
 
-    // Pick the best available voice for this language
+    // Map to proper Android locale — Google TTS supports all Indian languages
+    const LOCALE_MAP: Record<string, string> = {
+      en: 'en-IN', hi: 'hi-IN', te: 'te-IN', ta: 'ta-IN', kn: 'kn-IN', mr: 'mr-IN',
+    };
+    const targetLocale = LOCALE_MAP[baseLang] ?? 'en-IN';
+
+    // Try to find an Enhanced/high-quality voice for this language.
+    // If none found, just use the locale directly — Google TTS will handle it.
     let chosenVoice: string | undefined;
-    let chosenLang = langInput;
     try {
       const voices = await Speech.getAvailableVoicesAsync();
-      const langPreference = [baseLang, 'hi', 'en'];
-      for (const lang of langPreference) {
-        const match =
-          voices.find(v => v.language.startsWith(lang) && (v.quality === 'Enhanced' || v.name?.toLowerCase().includes('high'))) ??
-          voices.find(v => v.language.startsWith(lang));
-        if (match) {
-          chosenVoice = match.identifier;
-          chosenLang = match.language;
-          break;
-        }
+      const match =
+        voices.find(v => v.language.startsWith(baseLang) && (v.quality === 'Enhanced' || v.name?.toLowerCase().includes('high'))) ??
+        voices.find(v => v.language.startsWith(baseLang));
+      if (match) {
+        chosenVoice = match.identifier;
       }
-    } catch { /* use defaults */ }
+      // Do NOT fall back to Hindi/English — always use the selected language
+    } catch { /* use locale directly */ }
 
     const opts = {
-      language: chosenLang,
-      voice: chosenVoice,
+      language: targetLocale,      // Always the selected language — never fall back
+      voice: chosenVoice,           // Enhanced voice if available, undefined otherwise
       rate: 0.85,
       pitch: 1.0,
     };
