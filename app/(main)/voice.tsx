@@ -229,11 +229,35 @@ export default function VoiceScreen() {
     i18n.changeLanguage(appCode);
     // Trigger TTS voice download for selected language (runs in background)
     ensureTTSVoiceForLanguage(appCode).catch(() => {});
-    // Check if this language's offline model is installed (no download dialog)
+
+    // Check if offline STT model is installed
     if (isLocaleInstalled(langCode, installedLocales)) {
       setSpeechModelStatus('available');
     } else {
-      setSpeechModelStatus('needs_download');
+      // Auto-trigger offline STT model download silently in background
+      setSpeechModelStatus('downloading');
+      ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale: langCode })
+        .then(() => {
+          console.warn(`[Voice] STT download triggered for ${langCode}`);
+          // Re-check after a delay
+          setTimeout(async () => {
+            try {
+              const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
+              const installed = new Set<string>(
+                (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
+              );
+              setInstalledLocales(installed);
+              setSpeechModelStatus(isLocaleInstalled(langCode, installed) ? 'available' : 'available');
+            } catch {
+              setSpeechModelStatus('available'); // Allow cloud fallback
+            }
+          }, 5000);
+        })
+        .catch(() => {
+          // Download not supported — allow cloud fallback, don't block user
+          console.warn(`[Voice] STT offline download not available for ${langCode}, using cloud`);
+          setSpeechModelStatus('available');
+        });
     }
   };
 
@@ -253,38 +277,32 @@ export default function VoiceScreen() {
         return;
       }
 
-      // Try on-device first for the selected language
+      // Try on-device first, then fall back to cloud automatically
       const hasOffline = isLocaleInstalled(selectedLanguage, installedLocales);
 
-      ExpoSpeechRecognitionModule.start({
-        lang: selectedLanguage,
-        interimResults: false,
-        maxAlternatives: 1,
-        continuous: false,
-        addsPunctuation: true,
-        requiresOnDeviceRecognition: hasOffline, // Only require offline if we know it's available
-      });
+      try {
+        ExpoSpeechRecognitionModule.start({
+          lang: selectedLanguage,
+          interimResults: false,
+          maxAlternatives: 1,
+          continuous: false,
+          addsPunctuation: true,
+          requiresOnDeviceRecognition: hasOffline,
+        });
+      } catch {
+        // Offline failed — immediately try cloud (works for all Indian languages)
+        ExpoSpeechRecognitionModule.start({
+          lang: selectedLanguage,
+          interimResults: false,
+          maxAlternatives: 1,
+          continuous: false,
+          addsPunctuation: true,
+          requiresOnDeviceRecognition: false,
+        });
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      // Fallback to cloud if on-device not available
-      if (msg.includes('on-device') || msg.includes('not available')) {
-        try {
-          ExpoSpeechRecognitionModule.start({
-            lang: selectedLanguage,
-            interimResults: false,
-            maxAlternatives: 1,
-            continuous: false,
-            addsPunctuation: true,
-            requiresOnDeviceRecognition: false,
-          });
-          return;
-        } catch (fbErr) {
-          const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
-          setError(t('voice.startFailed') + `: ${fbMsg}`);
-        }
-      } else {
-        setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
-      }
+      setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
       setIsListening(false);
     }
   };
