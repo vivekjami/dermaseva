@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Animated, Keyboard, Linking, Alert,
+  ScrollView, Animated, Keyboard, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
 import { useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Category } from '@/store/app-store';
 import { initHistoryDB } from '@/modules/db/patient-history';
 import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/modules/ai/llama-engine';
 import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
+import {
+  isWhisperLoaded, isWhisperDownloaded, downloadWhisperModel,
+  loadWhisperModel, transcribeAudio,
+} from '@/modules/stt/whisper-engine';
+import { startRecording, stopRecording } from '@/modules/stt/audio-recorder';
 
 const MAX_CHARS = 1200;
 
@@ -54,10 +55,10 @@ export default function VoiceScreen() {
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef<ScrollView>(null);
-  const [speechModelStatus, setSpeechModelStatus] = useState<'checking' | 'available' | 'downloading' | 'unavailable' | 'needs_download' | null>(null);
-  const [installedLocales, setInstalledLocales] = useState<Set<string>>(new Set());
   const [aiModelStatus, setAiModelStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
+  const [whisperStatus, setWhisperStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
@@ -77,7 +78,6 @@ export default function VoiceScreen() {
       }
     }
     checkAiStatus();
-    // Poll every 3s until model is loaded
     const interval = setInterval(async () => {
       if (isModelLoaded()) {
         setAiModelStatus('loaded');
@@ -89,122 +89,30 @@ export default function VoiceScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check which offline speech models are already installed
+  // Check & load Whisper STT model
   useEffect(() => {
-    async function loadInstalledLocales() {
-      setSpeechModelStatus('checking');
+    async function checkWhisperStatus() {
       try {
-        const supported = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
-        if (!supported) {
-          setSpeechModelStatus('unavailable');
+        if (isWhisperLoaded()) {
+          setWhisperStatus('loaded');
           return;
         }
-        const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
-        // locales.locales contains all installed on-device locales
-        const installed = new Set<string>(
-          (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
-        );
-        setInstalledLocales(installed);
-
-        // Check if current language is installed
-        if (isLocaleInstalled(selectedLanguage, installed)) {
-          setSpeechModelStatus('available');
-        } else {
-          setSpeechModelStatus('needs_download');
+        const downloaded = await isWhisperDownloaded();
+        if (!downloaded) {
+          setWhisperStatus('not_downloaded');
+          return;
         }
+        setWhisperStatus('loading');
+        await loadWhisperModel();
+        setWhisperStatus('loaded');
       } catch {
-        // getSupportedLocales not available — assume available
-        setSpeechModelStatus('available');
+        setWhisperStatus('not_downloaded');
       }
     }
-    loadInstalledLocales();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    checkWhisperStatus();
   }, []);
 
-  // Helper: check if a locale (e.g. "te-IN") is in the installed set
-  function isLocaleInstalled(locale: string, installed: Set<string>): boolean {
-    const lower = locale.toLowerCase();
-    // Check exact match (te-in), language-only match (te), or partial (te_in)
-    return installed.has(lower)
-      || installed.has(lower.replace('-', '_'))
-      || installed.has(lower.split('-')[0])
-      || [...installed].some((l) => l.startsWith(lower.split('-')[0]));
-  }
 
-  // Trigger download only when user explicitly requests it for a missing language
-  const downloadSpeechModel = async (locale: string) => {
-    setSpeechModelStatus('downloading');
-    try {
-      await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale });
-    } catch {
-      // androidTriggerOfflineModelDownload failed — guide user to settings
-      const baseLang = locale.split('-')[0];
-      const langName = { te: 'Telugu', ta: 'Tamil', kn: 'Kannada', mr: 'Marathi', hi: 'Hindi' }[baseLang] || locale;
-      Alert.alert(
-        `Download ${langName} Offline Model`,
-        `To enable offline speech recognition for ${langName}:\n\n` +
-        `1. Open Settings → Google → Text-to-Speech\n` +
-        `2. Or go to Settings → Languages & Input → Speech → Offline Speech Recognition\n` +
-        `3. Download the ${langName} language pack\n\n` +
-        `Note: Some languages may only work with an internet connection.`,
-        [
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          { text: 'Use Online', style: 'cancel', onPress: () => setSpeechModelStatus('available') },
-        ]
-      );
-    }
-    // Re-check installed locales after user returns
-    setTimeout(async () => {
-      try {
-        const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
-        const installed = new Set<string>(
-          (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
-        );
-        setInstalledLocales(installed);
-        if (isLocaleInstalled(locale, installed)) {
-          setSpeechModelStatus('available');
-        } else {
-          setSpeechModelStatus('needs_download');
-        }
-      } catch {
-        setSpeechModelStatus('needs_download');
-      }
-    }, 2000);
-  };
-
-
-
-  // ─── Speech recognition events ────────────────────────────────────────────
-  useSpeechRecognitionEvent('start', () => {
-    setIsListening(true);
-    setError('');
-  });
-
-  useSpeechRecognitionEvent('end', () => {
-    setIsListening(false);
-  });
-
-  useSpeechRecognitionEvent('result', (event) => {
-    if (event.results && event.results.length > 0) {
-      const latestTranscript = event.results[0]?.transcript ?? '';
-      if (event.isFinal) {
-        setTranscription((prev) => {
-          if (!prev.trim()) return latestTranscript;
-          return `${prev} ${latestTranscript}`;
-        });
-      }
-    }
-  });
-
-  useSpeechRecognitionEvent('error', (event) => {
-    console.error('[Voice] Error:', event.error, event.message);
-    if (event.error === 'no-speech') {
-      setIsListening(false);
-      return;
-    }
-    setError(event.message || t('voice.speechFailed'));
-    setIsListening(false);
-  });
 
   // Pulse animation
   useEffect(() => {
@@ -227,79 +135,70 @@ export default function VoiceScreen() {
     setSelectedLanguage(langCode);
     setLanguage(appCode);
     i18n.changeLanguage(appCode);
-    // Trigger TTS voice download for selected language (runs in background)
+    // Silent TTS warmup — no UI, no intents, just a near-silent speak
     ensureTTSVoiceForLanguage(appCode).catch(() => {});
+  };
 
-    // Check if offline STT model is installed
-    if (isLocaleInstalled(langCode, installedLocales)) {
-      setSpeechModelStatus('available');
-    } else {
-      // Auto-trigger offline STT model download silently in background
-      setSpeechModelStatus('downloading');
-      ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({ locale: langCode })
-        .then(() => {
-          console.warn(`[Voice] STT download triggered for ${langCode}`);
-          // Re-check after a delay
-          setTimeout(async () => {
-            try {
-              const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({});
-              const installed = new Set<string>(
-                (locales.locales ?? locales.installedLocales ?? []).map((l: string) => l.toLowerCase())
-              );
-              setInstalledLocales(installed);
-              setSpeechModelStatus(isLocaleInstalled(langCode, installed) ? 'available' : 'available');
-            } catch {
-              setSpeechModelStatus('available'); // Allow cloud fallback
-            }
-          }, 5000);
-        })
-        .catch(() => {
-          // Download not supported — allow cloud fallback, don't block user
-          console.warn(`[Voice] STT offline download not available for ${langCode}, using cloud`);
-          setSpeechModelStatus('available');
-        });
+  // Download Whisper STT model
+  const handleDownloadWhisper = async () => {
+    setWhisperStatus('downloading');
+    try {
+      await downloadWhisperModel((pct) => setDownloadProgress(pct));
+      setWhisperStatus('loading');
+      await loadWhisperModel();
+      setWhisperStatus('loaded');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      Alert.alert('Download Failed', `Could not download speech model: ${msg}`);
+      setWhisperStatus('not_downloaded');
     }
   };
 
+  // Toggle recording — fully offline via Whisper
   const toggleListening = async () => {
     setError('');
     Keyboard.dismiss();
 
     if (isListening) {
-      ExpoSpeechRecognitionModule.stop();
+      // Stop recording and transcribe
+      setIsListening(false);
+      setIsTranscribing(true);
+      try {
+        const audioPath = await stopRecording();
+        if (!audioPath) {
+          setError('Recording failed — no audio captured');
+          setIsTranscribing(false);
+          return;
+        }
+        // Transcribe using Whisper (fully offline)
+        const result = await transcribeAudio(audioPath, selectedLanguage);
+        if (result.text.trim()) {
+          setTranscription((prev) => {
+            if (!prev.trim()) return result.text;
+            return `${prev} ${result.text}`;
+          });
+        } else {
+          setError(t('voice.speechFailed') || 'No speech detected');
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(`Transcription failed: ${msg}`);
+      } finally {
+        setIsTranscribing(false);
+      }
       return;
     }
 
+    // Check if Whisper model is ready
+    if (!isWhisperLoaded()) {
+      setError('Speech model not loaded. Please download it first.');
+      return;
+    }
+
+    // Start recording
     try {
-      const permResult = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!permResult.granted) {
-        setError(t('voice.permissionDenied'));
-        return;
-      }
-
-      // Try on-device first, then fall back to cloud automatically
-      const hasOffline = isLocaleInstalled(selectedLanguage, installedLocales);
-
-      try {
-        ExpoSpeechRecognitionModule.start({
-          lang: selectedLanguage,
-          interimResults: false,
-          maxAlternatives: 1,
-          continuous: false,
-          addsPunctuation: true,
-          requiresOnDeviceRecognition: hasOffline,
-        });
-      } catch {
-        // Offline failed — immediately try cloud (works for all Indian languages)
-        ExpoSpeechRecognitionModule.start({
-          lang: selectedLanguage,
-          interimResults: false,
-          maxAlternatives: 1,
-          continuous: false,
-          addsPunctuation: true,
-          requiresOnDeviceRecognition: false,
-        });
-      }
+      await startRecording();
+      setIsListening(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(t('voice.startFailed') + (msg ? `: ${msg}` : ''));
@@ -471,7 +370,6 @@ export default function VoiceScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.langScroll}>
               <View style={styles.langRow}>
                 {VOICE_LANGUAGES.map((lang) => {
-                  const installed = isLocaleInstalled(lang.code, installedLocales);
                   const isSelected = selectedLanguage === lang.code;
                   return (
                     <TouchableOpacity
@@ -480,7 +378,7 @@ export default function VoiceScreen() {
                       onPress={() => handleLanguageChange(lang.code, lang.appCode)}
                     >
                       <Text style={[styles.langText, isSelected && styles.langTextSelected]}>
-                        {lang.label} {installed ? '✓' : '↓'}
+                        {lang.label}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -490,28 +388,8 @@ export default function VoiceScreen() {
           </View>
         )}
 
-        {/* Speech model status — only show actionable states */}
-        {speechModelStatus === 'needs_download' && (
-          <TouchableOpacity
-            style={[styles.followUpBanner, { backgroundColor: '#fff8e1', borderColor: '#f9a825' }]}
-            onPress={() => downloadSpeechModel(selectedLanguage)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.followUpText}>
-              ↓ Offline speech model not installed for this language. Tap to download.
-            </Text>
-          </TouchableOpacity>
-        )}
-        {speechModelStatus === 'downloading' && (
-          <View style={[styles.followUpBanner, { backgroundColor: '#fff8e1', borderColor: '#f9a825' }]}>
-            <Text style={styles.followUpText}>⏳ Downloading offline speech model...</Text>
-          </View>
-        )}
-        {speechModelStatus === 'unavailable' && (
-          <View style={[styles.followUpBanner, { backgroundColor: '#fce4ec', borderColor: '#e53935' }]}>
-            <Text style={styles.followUpText}>📡 On-device speech not supported — using cloud</Text>
-          </View>
-        )}
+
+
 
         {/* Mode Toggle */}
         <View style={styles.modeToggleContainer}>
@@ -570,7 +448,32 @@ export default function VoiceScreen() {
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
-        {inputMode === 'voice' && (
+        {inputMode === 'voice' && whisperStatus === 'not_downloaded' && (
+          <TouchableOpacity
+            style={[styles.recordButton, { backgroundColor: '#1565C0' }]}
+            onPress={handleDownloadWhisper}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.micIcon}>📥</Text>
+            <Text style={styles.recordButtonText}>Download Speech Model (~142 MB)</Text>
+          </TouchableOpacity>
+        )}
+
+        {inputMode === 'voice' && whisperStatus === 'downloading' && (
+          <View style={[styles.recordButton, { backgroundColor: '#37474F' }]}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.recordButtonText}>Downloading... {downloadProgress}%</Text>
+          </View>
+        )}
+
+        {inputMode === 'voice' && whisperStatus === 'loading' && (
+          <View style={[styles.recordButton, { backgroundColor: '#37474F' }]}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.recordButtonText}>Loading speech model...</Text>
+          </View>
+        )}
+
+        {inputMode === 'voice' && whisperStatus === 'loaded' && !isTranscribing && (
           <Animated.View style={[styles.micContainer, { transform: [{ scale: pulseAnim }] }]}>
             <TouchableOpacity
               style={[styles.recordButton, isListening && styles.recordingButton]}
@@ -583,6 +486,13 @@ export default function VoiceScreen() {
               </Text>
             </TouchableOpacity>
           </Animated.View>
+        )}
+
+        {inputMode === 'voice' && isTranscribing && (
+          <View style={[styles.recordButton, { backgroundColor: '#37474F' }]}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.recordButtonText}>Transcribing speech...</Text>
+          </View>
         )}
 
         <TouchableOpacity
