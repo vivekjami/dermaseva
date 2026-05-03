@@ -18,7 +18,7 @@ import { isModelLoaded, isModelDownloaded, downloadModel, loadModel } from '@/mo
 import { ensureTTSVoiceForLanguage } from '@/modules/tts/voice-manager';
 import {
   isWhisperLoaded, isWhisperDownloaded, downloadWhisperModel,
-  loadWhisperModel, startWhisperRecording, stopWhisperRecording
+  loadWhisperModel, transcribeAudio
 } from '@/modules/stt/whisper-engine';
 
 const MAX_CHARS = 1200;
