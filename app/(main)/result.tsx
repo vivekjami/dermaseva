@@ -154,51 +154,95 @@ export default function ResultScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symptoms]);
 
-  // ─── Smart TTS with voice fallback ──────────────────────────────────────────
+  // ─── Natural structured TTS — reads the full result in logical sections ──────
   async function speakResult(parsed: ParsedResult, langInput: string) {
-    const actionSummary = parsed.actionSteps?.length > 0
-      ? `. ${parsed.actionSteps[0]}` : '';
-    const textToSpeak = `${parsed.conditionName}. ${parsed.severity}. ${parsed.doctorReferral}${actionSummary}`;
+    // Stop any previous speech
+    Speech.stop();
 
-    // Get the base language code (e.g., 'te' from 'te-IN')
-    const baseLang = langInput.split('-')[0];
+    const baseLang = langInput.split('-')[0].toLowerCase();
 
-    // Try to find a voice for the requested language
+    // Pick the best available voice for this language
+    let chosenVoice: string | undefined;
+    let chosenLang = langInput;
     try {
       const voices = await Speech.getAvailableVoicesAsync();
-
-      // Preferred language order: requested → Hindi → English
       const langPreference = [baseLang, 'hi', 'en'];
-      let chosenVoice: string | undefined;
-      let chosenLang = baseLang;
-
       for (const lang of langPreference) {
-        const match = voices.find(
-          (v) => v.language.startsWith(lang) && v.quality === 'Enhanced'
-        ) ?? voices.find(
-          (v) => v.language.startsWith(lang)
-        );
+        // Prefer "Enhanced" or "high" quality voices (Google neural voices)
+        const match =
+          voices.find(v => v.language.startsWith(lang) && (v.quality === 'Enhanced' || v.name?.toLowerCase().includes('high'))) ??
+          voices.find(v => v.language.startsWith(lang));
         if (match) {
           chosenVoice = match.identifier;
           chosenLang = match.language;
           break;
         }
       }
+    } catch { /* use defaults */ }
 
-      Speech.speak(textToSpeak, {
-        language: chosenLang,
-        voice: chosenVoice,
-        rate: 0.9,      // Natural speaking pace
-        pitch: 1.0,     // Natural pitch (1.3 was too robotic/squeaky)
-      });
-    } catch {
-      // Fallback — just use basic English
-      Speech.speak(textToSpeak, {
-        language: 'en',
-        rate: 0.9,
-        pitch: 1.0,
+    const opts = {
+      language: chosenLang,
+      voice: chosenVoice,
+      rate: 0.85,   // Slightly slower than normal for field workers
+      pitch: 1.0,
+    };
+
+    // Build a natural narrative script from the parsed result
+    const severityPhrase: Record<string, string> = {
+      mild: 'This appears to be a mild condition.',
+      moderate: 'This is a moderate condition that needs attention.',
+      severe: 'This is a severe condition requiring urgent care.',
+    };
+
+    // Build utterances as an array of strings to speak sequentially
+    const utterances: string[] = [];
+
+    // 1. Opening — condition and severity
+    utterances.push(
+      `Screening complete. The likely condition is ${parsed.conditionName}. ${severityPhrase[parsed.severity] ?? ''}`
+    );
+
+    // 2. Key signs
+    if (parsed.keySigns && parsed.keySigns.length > 0) {
+      utterances.push(
+        `The patient may show the following signs. ${parsed.keySigns.join('. ')}.`
+      );
+    }
+
+    // 3. Action steps — the most important section
+    if (parsed.actionSteps && parsed.actionSteps.length > 0) {
+      utterances.push(`Here is what you should do.`);
+      parsed.actionSteps.forEach((step, i) => {
+        utterances.push(`Step ${i + 1}. ${step}`);
       });
     }
+
+    // 4. OTC suggestion if available
+    if (parsed.otcSuggestion) {
+      utterances.push(`Medication suggestion. ${parsed.otcSuggestion}`);
+    }
+
+    // 5. Doctor referral
+    if (parsed.doctorReferral) {
+      utterances.push(`Regarding doctor visit. ${parsed.doctorReferral}`);
+    }
+
+    // 6. Follow-up plan
+    if (parsed.followUpPlan) {
+      utterances.push(`Follow up plan. ${parsed.followUpPlan}`);
+    }
+
+    // Speak utterances sequentially using chained onDone callbacks
+    const speakSequentially = (index: number) => {
+      if (index >= utterances.length) return;
+      Speech.speak(utterances[index], {
+        ...opts,
+        onDone: () => speakSequentially(index + 1),
+        onError: () => speakSequentially(index + 1), // skip failed segment
+      });
+    };
+
+    speakSequentially(0);
   }
 
   async function runAnalysis(useMock: boolean) {

@@ -61,12 +61,12 @@ export function buildPrompt(input: PromptInput): string {
     prompt += `\nSymptoms: ${description}\n`;
   }
 
-  // Inject candidate conditions from knowledge base
+  // Inject candidate conditions from knowledge base (top 2 only — keeps prompt short)
   if (input.candidateContext) {
-    prompt += `\n${input.candidateContext}\n`;
+    prompt += `\n${input.candidateContext.slice(0, 800)}\n`;
   }
 
-  prompt += `\nJudge the best matching condition from the candidates above. Use the guideline data provided. Respond in ${langName}. Return ONLY valid JSON — no other text.`;
+  prompt += `\nMatch the best condition above. Respond in ${langName}. Return ONLY valid JSON.`;
 
   return prompt;
 }

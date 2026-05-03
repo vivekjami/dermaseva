@@ -15,16 +15,12 @@ import { findCandidateConditions } from '@/modules/ai/knowledge-base';
 export { MODEL_NAME, MODEL_DOWNLOAD_URL, MODEL_SIZE_BYTES, MODEL_LOCAL_PATH };
 
 // System prompt for Gemma 4 E2B — structured for JSON output
-const SYSTEM_PROMPT = `You are DermaSeva, an expert health assistant for ASHA and Anganwadi workers in rural India.
-You will receive: 1) Candidate conditions from WHO/NHM/IMNCI guidelines 2) The worker's symptom description.
-Your job: Judge which candidate condition best matches. If none fit well, set confidence below 0.3.
-Respond ONLY with valid JSON — no text before or after the JSON object:
+const SYSTEM_PROMPT = `You are DermaSeva, a clinical decision support AI for ASHA/Anganwadi workers in rural India.
+Input: candidate conditions from WHO/NHM/IMNCI guidelines + symptom description.
+Task: Select best matching condition. If no match, set confidence below 0.3.
+Output ONLY valid JSON (no markdown, no explanation):
 {"conditionName":"string","confidence":0.0-1.0,"severity":"mild|moderate|severe","keySigns":["string"],"actionSteps":["string"],"otcSuggestion":"string or null","doctorReferral":"string","needsUrgentReferral":false,"guidelineSource":"string or null","followUpPlan":"string or null"}
-IMPORTANT RULES:
-- Output ONLY the JSON object. No markdown, no explanation, no code fences.
-- The "conditionName" field must always be in English.
-- The "actionSteps", "doctorReferral", "followUpPlan", and "keySigns" fields MUST be in the language requested by the worker (Hindi, Telugu, Tamil, Kannada, Marathi, or English).
-- If unsure, set confidence below 0.3.`;
+RULES: conditionName always in English. actionSteps/doctorReferral/followUpPlan/keySigns in the worker's requested language.`;
 
 // Stop tokens for Gemma 4
 const STOP_WORDS = ['</s>', '<end_of_turn>', '<|end|>', '<|eot_id|>', '<|im_end|>'];
@@ -198,7 +194,7 @@ export async function runInference(input: InferenceInput): Promise<InferenceOutp
       ],
       jinja: true,              // Required for messages API with Gemma 4 chat template
       enable_thinking: false,   // Disable thinking blocks — we need pure JSON output
-      n_predict: 512,
+      n_predict: 300,            // JSON output is ~150 tokens; 300 gives safe headroom
       n_threads: 4,             // All CPU cores per completion
       temperature: 0.1,         // Deterministic JSON output
       top_k: 40,
