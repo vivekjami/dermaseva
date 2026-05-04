@@ -326,7 +326,7 @@ export default function VoiceScreen() {
       if (whisperStatus === 'not_downloaded') {
         Alert.alert(
           'Offline Speech Model',
-          `${VOICE_LANGUAGES.find(l => l.code === langCode)?.label ?? langCode} requires a 142MB Multilingual Whisper model for offline speech.\n\n` +
+          `${VOICE_LANGUAGES.find(l => l.code === langCode)?.label ?? langCode} requires a 466MB Multilingual Whisper model for offline speech.\n\n` +
           'Would you like to download it now?',
           [
             { text: 'Later', style: 'cancel' },
@@ -521,7 +521,7 @@ export default function VoiceScreen() {
       if (whisperStatus === 'not_downloaded') {
         Alert.alert(
           'Offline Speech Model',
-          `You are offline. To use this language offline, you need to download the 142MB Multilingual Whisper model.\n\n` +
+          `You are offline. To use this language offline, you need to download the 466MB Multilingual Whisper model.\n\n` +
           'Please connect to the internet and download it.',
           [
             { text: 'Cancel', style: 'cancel' },
@@ -788,7 +788,7 @@ export default function VoiceScreen() {
           activeOpacity={0.7}
         >
           <Text style={styles.whisperBannerText}>
-            📥 Download offline speech model (~142 MB) for regional languages in airplane mode
+            📥 Download offline speech model (~466 MB) for regional languages in airplane mode
           </Text>
         </TouchableOpacity>
       )}
