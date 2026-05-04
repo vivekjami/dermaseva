@@ -143,7 +143,15 @@ export function listenForVoskResult(): Promise<string> {
 export function stopVoskRecording(): void {
   if (!resolveRecording) return;
   stop();
-  // `stop()` triggers `onFinalResult` which calls `resolveRecording`
+  // `stop()` triggers `onFinalResult` which calls `resolveRecording`.
+  // However, if there was no speech, it may never fire, hanging the UI.
+  // We add a safety timeout to force resolve.
+  setTimeout(() => {
+    if (resolveRecording) {
+      resolveRecording('');
+      cleanupSubscriptions();
+    }
+  }, 500);
 }
 
 function cleanupSubscriptions() {
