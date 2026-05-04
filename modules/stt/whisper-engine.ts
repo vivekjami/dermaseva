@@ -6,7 +6,7 @@
  * 2. Google doesn't have an offline model for the selected language
  *    (e.g., Telugu, Tamil, Kannada, Marathi)
  *
- * The multilingual ggml-small model (~466MB) supports ALL languages
+ * The multilingual ggml-small-q5_1 model (~181MB) supports ALL languages
  * with a single file, providing much better accuracy for regional languages.
  */
 
@@ -14,8 +14,8 @@
 import { initWhisper, type WhisperContext } from 'whisper.rn';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const MODEL_FILENAME = 'ggml-small.bin';
-const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin';
+const MODEL_FILENAME = 'ggml-small-q5_1.bin';
+const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin';
 
 function getModelDir(): string {
   return `${FileSystem.documentDirectory}whisper/`;
@@ -101,8 +101,9 @@ export async function transcribeAudio(
 
   const { promise } = ctx.transcribe(audioPath, {
     language: lang,
-    maxLen: 0,
+    maxLen: 1,
     tokenTimestamps: false,
+    nThreads: 4,
     beamSize: 1,
     bestOf: 1,
     temperature: 0.0,
