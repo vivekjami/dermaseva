@@ -73,7 +73,9 @@
         "exclude": [
           "expo-av",
           "whisper.rn",
-          "expo-speech-recognition"
+          "expo-speech-recognition",
+          "react-native-zip-archive",
+          "react-native-vosk"
         ],
         "listUnknownPackages": false
       }
