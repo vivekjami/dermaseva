@@ -14,8 +14,8 @@
 import { initWhisper, type WhisperContext } from 'whisper.rn';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const MODEL_FILENAME = 'ggml-small-q5_1.bin';
-const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin';
+const MODEL_FILENAME = 'ggml-tiny-q5_1.bin';
+const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin';
 
 function getModelDir(): string {
   return `${FileSystem.documentDirectory}whisper/`;
@@ -32,7 +32,20 @@ export function isWhisperLoaded(): boolean {
   return ctx !== null;
 }
 
+export async function cleanOldModels(): Promise<void> {
+  const dir = getModelDir();
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) return;
+  const files = await FileSystem.readDirectoryAsync(dir);
+  for (const file of files) {
+    if (file !== MODEL_FILENAME && file.endsWith('.bin')) {
+      await FileSystem.deleteAsync(`${dir}${file}`, { idempotent: true });
+    }
+  }
+}
+
 export async function isWhisperDownloaded(): Promise<boolean> {
+  await cleanOldModels();
   const info = await FileSystem.getInfoAsync(getModelPath());
   return info.exists;
 }
@@ -45,6 +58,15 @@ const WHISPER_LANG_MAP: Record<string, string> = {
   'ta-IN': 'ta',
   'kn-IN': 'kn',
   'mr-IN': 'mr',
+};
+
+const WHISPER_PROMPTS: Record<string, string> = {
+  'te': 'లక్షణాలు చర్మం దురద జ్వరం నొప్పి',
+  'ta': 'அறிகுறிகள் தோல் அரிப்பு காய்ச்சல் வலி',
+  'kn': 'ರೋಗಲಕ್ಷಣಗಳು ಚರ್ಮ ತುರಿಕೆ ಜ್ವರ ನೋವು',
+  'mr': 'लक्षणे त्वचा खाज ताप वेदना',
+  'hi': 'लक्षण त्वचा खुजली बुखार दर्द',
+  'en': '',
 };
 
 export async function downloadWhisperModel(
@@ -101,6 +123,7 @@ export async function transcribeAudio(
 
   const { promise } = ctx.transcribe(audioPath, {
     language: lang,
+    prompt: WHISPER_PROMPTS[lang] ?? '',
     maxLen: 1,
     tokenTimestamps: false,
     nThreads: 4,
