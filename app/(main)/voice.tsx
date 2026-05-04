@@ -104,8 +104,6 @@ export default function VoiceScreen() {
   const [whisperStatus, setWhisperStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
 
   const [isTranscribing, setIsTranscribing] = useState(false);
-  
-  const [isUsingWhisper, setIsUsingWhisper] = useState(false);
 
   // Init DB on mount
   useEffect(() => { initHistoryDB(); }, []);
@@ -209,7 +207,6 @@ export default function VoiceScreen() {
   });
 
   useSpeechRecognitionEvent('result', (event) => {
-    if (isUsingWhisper) return;
     if (event.results && event.results.length > 0) {
       const latestTranscript = event.results[0]?.transcript ?? '';
       if (event.isFinal) {
@@ -223,10 +220,6 @@ export default function VoiceScreen() {
 
   useSpeechRecognitionEvent('error', async (event) => {
     console.error('[Voice] Error:', event.error, event.message);
-    
-    if (isUsingWhisper) {
-      return;
-    }
 
     if (event.error === 'no-speech') {
       setIsListening(false);
@@ -370,21 +363,18 @@ export default function VoiceScreen() {
     Keyboard.dismiss();
 
     // ─── STOP: If using Whisper, stop recording and transcribe ───
-    if (isUsingWhisper && isListening) {
+    if (isListening && !isGoogleLang(selectedLanguage)) {
+      // Whisper path: stop recorder and transcribe
       setIsListening(false);
-      setIsUsingWhisper(false);
       setIsTranscribing(true);
       try {
-        const audioPath = await stopRecording();
-        if (audioPath) {
-          const result = await transcribeAudio(audioPath, selectedLanguage);
-          if (result.text.trim()) {
-            setTranscription((prev) => prev.trim() ? `${prev} ${result.text}` : result.text);
-          } else {
-            setError(t('voice.speechFailed') || 'No speech detected');
-          }
+        const uri = await stopRecording();
+        if (!uri) throw new Error('No audio captured');
+        const result = await transcribeAudio(uri, selectedLanguage);
+        if (result.text.trim()) {
+          setTranscription((prev) => prev.trim() ? `${prev} ${result.text}` : result.text);
         } else {
-          setError('Recording failed — no audio captured');
+          setError(t('voice.speechFailed') || 'No speech detected');
         }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -488,15 +478,12 @@ export default function VoiceScreen() {
       // Offline — use Whisper (te-IN, ta-IN, kn-IN, mr-IN)
       if (isWhisperLoaded()) {
         try {
-          setIsUsingWhisper(true);
-          setIsListening(true);
           await startRecording();
+          setIsListening(true);
           return;
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           setError(`Could not start recording: ${msg}`);
-          setIsUsingWhisper(false);
-          setIsListening(false);
           return;
         }
       }
@@ -798,7 +785,7 @@ export default function VoiceScreen() {
               <Text style={styles.micIcon}>{isListening ? '⏹️' : '🎙️'}</Text>
               <Text style={styles.recordButtonText}>
                 {isListening
-                  ? (isUsingWhisper ? 'Recording… Tap to transcribe' : t('voice.tapToStop'))
+                  ? 'Recording… Tap to transcribe'
                   : t('voice.tapToSpeak')}
               </Text>
             </TouchableOpacity>
