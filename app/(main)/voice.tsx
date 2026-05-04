@@ -939,7 +939,7 @@ export default function VoiceScreen() {
         <View style={styles.whisperBanner}>
           <ActivityIndicator size="small" color="#01696f" />
           <Text style={styles.whisperBannerText}>
-            Downloading speech model... {whisperProgress}%
+            Downloading speech model... {downloadProgress}%
           </Text>
         </View>
       )}
