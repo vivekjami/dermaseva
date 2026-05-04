@@ -14,8 +14,8 @@
 import { initWhisper, type WhisperContext } from 'whisper.rn';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const MODEL_FILENAME = 'ggml-tiny-q5_1.bin';
-const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin';
+const MODEL_FILENAME = 'ggml-small-q5_1.bin';
+const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin';
 
 function getModelDir(): string {
   return `${FileSystem.documentDirectory}whisper/`;
