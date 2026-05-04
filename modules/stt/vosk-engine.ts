@@ -6,7 +6,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { unzip } from 'react-native-zip-archive';
-import { loadModel, start, stop, unload, onResult, onPartialResult, onFinalResult } from 'react-native-vosk';
+import { loadModel, start, stop, unload, onFinalResult } from 'react-native-vosk';
 
 const MODEL_FILENAME = 'vosk-model-small-te-0.42.zip';
 const MODEL_FOLDER_NAME = 'vosk-model-small-te-0.42';
@@ -25,8 +25,8 @@ function getExtractedPath(): string {
 }
 
 let isLoaded = false;
-let resultSubscription: any = null;
-let finalResultSubscription: any = null;
+let resultSubscription: { remove: () => void } | null = null;
+let finalResultSubscription: { remove: () => void } | null = null;
 
 export function isVoskLoaded(): boolean {
   return isLoaded;
@@ -45,7 +45,6 @@ export async function downloadVoskModel(
   if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
 
   const zipPath = getZipPath();
-  const extractedPath = getExtractedPath();
 
   // 1. Download ZIP
   const download = FileSystem.createDownloadResumable(
@@ -100,7 +99,6 @@ export async function releaseVoskModel(): Promise<void> {
 }
 
 let resolveRecording: ((text: string) => void) | null = null;
-let rejectRecording: ((err: any) => void) | null = null;
 
 export async function startVoskRecording(): Promise<void> {
   if (!isLoaded) throw new Error('Vosk not loaded');
@@ -119,9 +117,8 @@ export async function startVoskRecording(): Promise<void> {
  * Returns a promise that will resolve with the final text when the recording stops.
  */
 export function listenForVoskResult(): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<string>((resolve) => {
     resolveRecording = resolve;
-    rejectRecording = reject;
 
     // Listen to final result
     finalResultSubscription = onFinalResult((e: string) => {
@@ -151,7 +148,6 @@ export function stopVoskRecording(): void {
 
 function cleanupSubscriptions() {
   resolveRecording = null;
-  rejectRecording = null;
   if (resultSubscription) {
     resultSubscription.remove();
     resultSubscription = null;

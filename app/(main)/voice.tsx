@@ -105,8 +105,7 @@ export default function VoiceScreen() {
   // Whisper and Vosk fallback state
   const [whisperStatus, setWhisperStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
   const [voskStatus, setVoskStatus] = useState<'loaded' | 'loading' | 'not_downloaded' | 'downloading'>('loading');
-  const [whisperProgress, setWhisperProgress] = useState(0);
-  const [voskProgress, setVoskProgress] = useState(0);
+
   const [isTranscribing, setIsTranscribing] = useState(false);
   
   const [isUsingWhisper, setIsUsingWhisper] = useState(false);
@@ -448,19 +447,49 @@ export default function VoiceScreen() {
     }
   };
 
-  // Download Whisper model for offline regional language support
-  const handleDownloadWhisper = async () => {
-    setWhisperStatus('downloading');
-    setWhisperProgress(0);
+  const downloadOfflineModel = async (locale: string) => {
+    Keyboard.dismiss();
+    setDownloadingLocale(locale);
+    setDownloadProgress(0);
+    setError('');
+
     try {
-      await downloadWhisperModel((pct) => setWhisperProgress(pct));
-      setWhisperStatus('loading');
-      await loadWhisperModel();
-      setWhisperStatus('loaded');
-    } catch (e) {
+      if (isGoogleLang(locale)) {
+        const result = await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
+          locale,
+        });
+        if (result.status === 'download_success') {
+          await markLocaleDownloaded(locale);
+        } else if (result.status === 'opened_dialog') {
+          // System handles it
+        } else {
+          setError(`Download canceled or failed: ${result.message}`);
+        }
+      } else if (locale === 'te-IN') {
+        // Download Vosk
+        setVoskStatus('downloading');
+        await downloadVoskModel((pct) => setDownloadProgress(pct));
+        setVoskStatus('loading');
+        await loadVoskModel();
+        setVoskStatus('loaded');
+      } else {
+        // Download Whisper
+        setWhisperStatus('downloading');
+        await downloadWhisperModel((pct) => setDownloadProgress(pct));
+        setWhisperStatus('loading');
+        await loadWhisperModel();
+        setWhisperStatus('loaded');
+      }
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      Alert.alert('Download Failed', `Could not download speech model: ${msg}`);
-      setWhisperStatus('not_downloaded');
+      setError(`Download failed: ${msg}`);
+      if (locale === 'te-IN') {
+        setVoskStatus('not_downloaded');
+      } else if (!isGoogleLang(locale)) {
+        setWhisperStatus('not_downloaded');
+      }
+    } finally {
+      setDownloadingLocale(null);
     }
   };
 
@@ -484,12 +513,6 @@ export default function VoiceScreen() {
     // ─── STOP: If using Vosk, stop recording ───
     if (isUsingVosk && isListening) {
       // stopping vosk will trigger onFinalResult listener in toggleListening
-      stopVoskRecording();
-      return;
-    }
-
-    // ─── STOP: If using Vosk, stop recording ───
-    if (isUsingVosk && isListening) {
       stopVoskRecording();
       return;
     }
@@ -560,50 +583,12 @@ export default function VoiceScreen() {
         }
       }
 
-      // Last resort: Whisper or Vosk
-      if (selectedLanguage === 'te-IN') {
-        if (isVoskLoaded()) {
-          try {
-            setIsUsingVosk(true);
-            setIsListening(true);
-            await startVoskRecording();
-            
-            listenForVoskResult().then((text) => {
-              if (text.trim()) setTranscription((prev) => prev.trim() ? `${prev} ${text}` : text);
-              else setError(t('voice.speechFailed') || 'No speech detected');
-              setIsListening(false);
-              setIsUsingVosk(false);
-            }).catch(e => {
-              setError(`Transcription failed: ${e}`);
-              setIsListening(false);
-              setIsUsingVosk(false);
-            });
-            return;
-          } catch {
-            setError('Vosk start failed');
-          }
-        }
-      } else if (isWhisperLoaded()) {
-        try {
-          setIsUsingWhisper(true);
-          setIsListening(true);
-          ExpoSpeechRecognitionModule.start({
-            lang: 'en-US',
-            requiresOnDeviceRecognition: true,
-            interimResults: false,
-            recordingOptions: { persist: true },
-          });
-          return;
-        } catch {
-          // Fall through to error
-        }
-      }
 
       // Nothing worked
       if (!isOnline && !hasOffline) {
         setError(
           'You are offline and the Google speech model is not downloaded.\n' +
-          'Connect to internet to download it, or download the Whisper model below.'
+          'Please connect to internet, or download the offline model by tapping the language chip again.'
         );
       } else {
         setError(t('voice.startFailed'));
@@ -631,7 +616,41 @@ export default function VoiceScreen() {
         }
       }
 
-      // Offline — use Whisper
+      // Offline — use Vosk or Whisper
+      if (selectedLanguage === 'te-IN') {
+        if (isVoskLoaded()) {
+          try {
+            setIsUsingVosk(true);
+            setIsListening(true);
+            await startVoskRecording();
+            
+            listenForVoskResult().then((text) => {
+              if (text.trim()) setTranscription((prev) => prev.trim() ? `${prev} ${text}` : text);
+              else setError(t('voice.speechFailed') || 'No speech detected');
+              setIsListening(false);
+              setIsUsingVosk(false);
+            }).catch(e => {
+              setError(`Transcription failed: ${e}`);
+              setIsListening(false);
+              setIsUsingVosk(false);
+            });
+            return;
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setError(`Could not start Vosk recording: ${msg}`);
+            return;
+          }
+        }
+        
+        if (voskStatus === 'not_downloaded') {
+          setError('You are offline. Download the Telugu Vosk model (below) while online to use offline speech.');
+        } else {
+          setError('Vosk model is loading. Please wait.');
+        }
+        return;
+      }
+
+      // Offline — use Whisper (ta-IN, kn-IN, mr-IN)
       if (isWhisperLoaded()) {
         try {
           setIsUsingWhisper(true);
@@ -907,7 +926,7 @@ export default function VoiceScreen() {
       {whisperStatus === 'not_downloaded' && (
         <TouchableOpacity
           style={styles.whisperBanner}
-          onPress={handleDownloadWhisper}
+          onPress={() => downloadOfflineModel(selectedLanguage)}
           activeOpacity={0.7}
         >
           <Text style={styles.whisperBannerText}>
