@@ -8,9 +8,9 @@ Built for the Gemma 4 Good Hackathon — Health & Sciences · Digital Equity & I
 
 ## Why This Exists
 
-India has over one million ASHA and Anganwadi workers. They are not doctors. They are community health workers — often the sole point of contact between a remote village and any form of medical guidance. They handle pediatric pneumonia, early leprosy, severe malnutrition, and fungal infections with no diagnostic tools, no specialist to call, and frequently no internet signal.
+India has over one million ASHA and Anganwadi workers. They are not doctors. They are community health workers, the only connection between a remote village and any medical advice. They treat paediatric pneumonia, early leprosy, severe malnutrition and fungal infections without diagnostic tools, without a specialist to call, and often without an internet signal.
 
-The problem is not that good AI doesn't exist. The problem is that it has never been built for this context — cheap hardware, zero connectivity, six languages, and users who need answers, not prompts.
+The problem is not that good AI doesn't exist. The problem is it was never built for this environment: cheap hardware, no connectivity, six languages, and users that want answers, not prompts.
 
 DermaSeva is our attempt to close that gap.
 
@@ -18,9 +18,9 @@ DermaSeva is our attempt to close that gap.
 
 ## What It Actually Does
 
-A health worker opens the app, selects a category (Skin, Child Health, or Malnutrition), and describes what they are seeing — by voice, in their own language. Within seconds, they receive a structured action plan: what to do, what not to do, and whether to refer the patient to a doctor immediately.
+A health worker opens the app, selects a category (Skin, Child Health, or Malnutrition), and describes what they are seeing by voice, in their own language. Within seconds, they receive a structured action plan: what to do, what not to do, and whether to refer the patient to a doctor immediately.
 
-Everything — speech recognition, medical knowledge retrieval, LLM inference — happens on the device. No internet required. No data leaves the phone.
+Everything from speech recognition, medical knowledge retrieval and LLM inference happens on the device. No internet required. No data leaves the phone.
 
 **35+ conditions are covered across three domains:**
 
@@ -53,11 +53,11 @@ All conditions and treatment steps are mapped directly from NHM, WHO, and IMNCI 
 
 ### Running Gemma 4 on a $150 Phone
 
-This was the central engineering challenge. The Gemma 4 E2B model at full precision is ~8GB — far beyond what a budget Android device can handle.
+This was the central engineering challenge. The Gemma 4 E2B model at full precision is ~6-8GB — far beyond what a budget Android device can handle.
 
 **Quantization:** We use `Q4_K_M`, which compresses model weights from 16-bit floats to 4-bit integers. The resulting file is 3.11GB. Accuracy loss is negligible for this use case; the reasoning quality needed for structured clinical triage survives quantization well.
 
-**Memory mapping:** Even 3.11GB cannot be loaded into active RAM on a 4GB device without an OOM crash. llama.cpp's `mmap` support maps the model file on flash storage into virtual memory. The CPU pages only the layers it needs at any given moment — keeping the active RAM footprint under 800MB during inference.
+**Memory mapping:** Even 3.11GB cannot be loaded into active RAM on a 4GB device without an OOM crash. llama.cpp's `mmap` support maps the model file on flash storage into virtual memory. The CPU pages only the layers it needs at any given moment, keeping the active RAM footprint under ~800MB during inference.
 
 **Downloading the model on rural 3G:** Standard HTTP downloads reset on network drops. We built a resumable background loop using `FileSystem.createDownloadResumable`. On failure, the engine writes the current byte offset to disk via `savable()`, waits five seconds, and issues an HTTP `Range: bytes=X-` resume request. This retries up to 50 times. From the user's perspective, the progress bar pauses and continues. They never restart from zero.
 
@@ -73,7 +73,7 @@ Getting voice input right across Indian languages was harder than the LLM work.
 
 The specific problem we had to solve: Whisper offline, without context, tends to transliterate Indian language audio into English phonetics. A worker saying "దురద" (itching) would come back as "doora." We fixed this with a prompt injection system (`WHISPER_PROMPTS`). When Telugu is selected, the Whisper engine is seeded with native-script medical vocabulary before transcription begins. This anchors the model's attention heads to the correct token space and produces accurate native-script output.
 
-**TTS:** After Gemma generates a response, Google Offline TTS reads the action steps aloud. This matters — some workers have limited reading literacy, and the audio output is not a nice-to-have.
+**TTS:** After Gemma generates a response, Google Offline TTS reads the action steps aloud. This matters as some workers have limited reading literacy, and the audio output is not a nice-to-have.
 
 ---
 
@@ -122,7 +122,7 @@ Two hard rules that override everything else:
 
 ### Data Privacy
 
-The privacy model is simple: the app is offline, so patient data has nowhere to go. There is no telemetry, no sync, no API endpoint. Case history — symptom text, AI output, severity flag, timestamp — is written to a local SQLite database via `expo-sqlite`. That database lives on the device and nowhere else.
+The privacy model is simple: the app is offline, so patient data has nowhere to go. There is no telemetry, no sync, no API endpoint. Case history like symptom text, AI output, severity flag, timestamp are written to a local SQLite database via `expo-sqlite`. That database lives on the device and nowhere else.
 
 ---
 
@@ -148,7 +148,7 @@ The privacy model is simple: the app is offline, so patient data has nowhere to 
 **Requirements:**
 - Node.js 20+ LTS
 - Android Studio, SDK Platform 35, Build-Tools 35.x
-- Physical ARM64 Android device, 4–6GB RAM
+- Physical Android device, 4–6GB RAM
 
 This project uses C++ JNI bindings (`llama.rn`, `whisper.rn`). Expo Go and web simulators will not work. You need a native build.
 
@@ -169,7 +169,7 @@ On first launch: select language and worker type, wait for the Gemma model downl
 
 These are not features we have — they are the honest next steps:
 
-**True multimodal inference:** Currently the app is voice and text only. As llama.cpp's `llava` mobile support matures, the plan is to pass camera frames directly into a Vision-Language Model for visual diagnostic confirmation — still fully offline.
+**True multimodal inference:** Currently the app is voice and text only. As llama.cpp's `llava` mobile support matures, the plan is to pass camera frames directly into a Vision-Language Model for visual diagnostic confirmation still fully offline.
 
 **NPU offloading via LiteRT:** CPU inference is functional but power-hungry. NNAPI delegate support through Google AI Edge would move matrix multiplication to the device NPU, cutting battery consumption significantly and pushing inference speed past 20 tokens/second.
 
@@ -183,7 +183,7 @@ These are not features we have — they are the honest next steps:
 
 ## Clinical Disclaimer
 
-DermaSeva is a screening and triage tool. It does not diagnose. It operates within the legally permitted scope of ASHA practice — OTC remedies only, with mandatory escalation for anything beyond that boundary. Any real-world clinical deployment would require validation by licensed medical professionals and regulatory clearance. This submission is a working proof-of-concept.
+DermaSeva is a screening and triage tool. It does not diagnose. It operates within the legally permitted scope of ASHA practice it is OTC remedies only, with mandatory escalation for anything beyond that boundary. Any real-world clinical deployment would require validation by licensed medical professionals and regulatory clearance. This submission is a working proof-of-concept.
 
 ---
 
