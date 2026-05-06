@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.vivekjami.dermaseva",
-      "versionCode": 1,
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -36,7 +36,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-camera",
       "expo-sqlite",
       "expo-secure-store",
       "expo-asset",
