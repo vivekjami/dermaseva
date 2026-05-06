@@ -62,22 +62,100 @@ export async function downloadModel(
     await FileSystem.makeDirectoryAsync(modelsDir, { intermediates: true });
   }
 
-  const callback = FileSystem.createDownloadResumable(
-    MODEL_DOWNLOAD_URL,
-    MODEL_LOCAL_PATH,
-    {},
-    (downloadProgress) => {
-      const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
+  const RESUME_DATA_FILE = `${FileSystem.documentDirectory}llama_resume_data.json`;
+
+  const callback = (downloadProgress: FileSystem.DownloadProgressData) => {
+    const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
+    if (totalBytesExpectedToWrite > 0) {
       onProgress({
         bytesDownloaded: totalBytesWritten,
         totalBytes: totalBytesExpectedToWrite,
         percentage: Math.round((totalBytesWritten / totalBytesExpectedToWrite) * 100),
       });
     }
-  );
+  };
 
-  const result = await callback.downloadAsync();
-  return result?.status === 200;
+  let downloadResumable: FileSystem.DownloadResumable | null = null;
+  let isResuming = false;
+
+  try {
+    const resumeInfo = await FileSystem.getInfoAsync(RESUME_DATA_FILE);
+    const modelInfo = await FileSystem.getInfoAsync(MODEL_LOCAL_PATH);
+    
+    // Only attempt to resume if both the resume metadata and the partial file exist
+    if (resumeInfo.exists && modelInfo.exists) {
+      const savedDataStr = await FileSystem.readAsStringAsync(RESUME_DATA_FILE);
+      const savedData = JSON.parse(savedDataStr);
+      downloadResumable = FileSystem.createDownloadResumable(
+        savedData.url || MODEL_DOWNLOAD_URL,
+        savedData.fileUri || MODEL_LOCAL_PATH,
+        savedData.options || {},
+        callback,
+        savedData.resumeData
+      );
+      isResuming = true;
+    }
+  } catch (e) {
+    console.warn('[LlamaEngine] Failed to parse resume data, starting fresh', e);
+    await FileSystem.deleteAsync(RESUME_DATA_FILE, { idempotent: true });
+  }
+
+  if (!downloadResumable) {
+    downloadResumable = FileSystem.createDownloadResumable(
+      MODEL_DOWNLOAD_URL,
+      MODEL_LOCAL_PATH,
+      {},
+      callback
+    );
+  }
+
+  let attempt = 0;
+  const MAX_ATTEMPTS = 50; 
+
+  while (attempt < MAX_ATTEMPTS) {
+    try {
+      let result;
+      if (isResuming) {
+        console.warn(`[LlamaEngine] Resuming download (Attempt ${attempt + 1})...`);
+        result = await downloadResumable.resumeAsync();
+      } else {
+        console.warn(`[LlamaEngine] Starting download (Attempt ${attempt + 1})...`);
+        result = await downloadResumable.downloadAsync();
+      }
+
+      // Check for success (200 OK or 206 Partial Content)
+      if (result && result.status >= 200 && result.status < 300) {
+        await FileSystem.deleteAsync(RESUME_DATA_FILE, { idempotent: true });
+        return true;
+      } else {
+         console.warn(`[LlamaEngine] Download returned HTTP status ${result?.status}`);
+         // If server refuses range or file not found, restart completely
+         if (result?.status === 416 || result?.status === 404) {
+           await FileSystem.deleteAsync(RESUME_DATA_FILE, { idempotent: true });
+           await FileSystem.deleteAsync(MODEL_LOCAL_PATH, { idempotent: true });
+           isResuming = false;
+           downloadResumable = FileSystem.createDownloadResumable(MODEL_DOWNLOAD_URL, MODEL_LOCAL_PATH, {}, callback);
+         }
+      }
+    } catch (e) {
+      console.warn(`[LlamaEngine] Download attempt ${attempt + 1} failed:`, e);
+      // Save state to resume in the next iteration or next app session
+      try {
+        const savable = downloadResumable.savable();
+        await FileSystem.writeAsStringAsync(RESUME_DATA_FILE, JSON.stringify(savable));
+        isResuming = true;
+      } catch (saveErr) {
+        console.error('[LlamaEngine] Failed to save resume data', saveErr);
+      }
+    }
+    
+    attempt++;
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise(resolve => setTimeout(resolve, 3000)); // wait 3s before retry
+    }
+  }
+
+  return false;
 }
 
 // ─── Engine (singleton) ───────────────────────────────────────────────────────
