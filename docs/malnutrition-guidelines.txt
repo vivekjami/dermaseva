@@ -1,0 +1,188 @@
+Malnutrition Management Guidelines
+Indian NHM, ICDS, and WHO Community-Based Management
+
+SECTION 1: CLASSIFICATION OF MALNUTRITION
+
+Severe Acute Malnutrition (SAM):
+- MUAC less than 11.5 cm (children 6 months to 5 years)
+- Weight-for-Height below -3 SD (WHO Growth Standards)
+- Bilateral pitting edema (nutritional edema/kwashiorkor)
+SAM is a medical emergency. Child is at high risk of death.
+
+Moderate Acute Malnutrition (MAM):
+- MUAC 11.5 to 12.4 cm
+- Weight-for-Height between -2 SD and -3 SD
+- No edema
+MAM requires nutritional supplementation and close monitoring.
+
+Stunting (Chronic Malnutrition):
+- Height-for-Age below -2 SD: Stunted
+- Height-for-Age below -3 SD: Severely stunted
+Indicates long-term inadequate nutrition. Cannot be reversed quickly.
+
+Underweight:
+- Weight-for-Age below -2 SD: Underweight
+- Weight-for-Age below -3 SD: Severely underweight
+Reflects both acute and chronic malnutrition.
+
+SECTION 2: SAM MANAGEMENT — FACILITY-BASED (NRC)
+
+Criteria for admission to Nutritional Rehabilitation Centre (NRC):
+- SAM with medical complications (any of):
+  - Anorexia (fails appetite test)
+  - Lower respiratory tract infection
+  - High fever
+  - Severe dehydration
+  - Severe anemia
+  - Hypothermia
+  - Hypoglycemia
+  - Skin lesions
+  - Eye signs of Vitamin A deficiency
+
+Phase 1 — Stabilization (Days 1-7):
+- Treat infections: Amoxicillin + Gentamicin
+- Correct dehydration: ReSoMal (not standard ORS — lower sodium)
+- Correct hypoglycemia: 50ml 10% dextrose or sugar water
+- Start feeding: F-75 therapeutic milk (75 kcal/100ml)
+- Give Vitamin A: As per age-specific doses
+- Give Folic acid: 5mg on Day 1, then 1mg daily
+- Do NOT give iron in Phase 1
+
+Phase 2 — Rehabilitation (Days 8-42):
+- Transition from F-75 to F-100 therapeutic milk (100 kcal/100ml)
+- Increase calories to 150-220 kcal/kg/day
+- Start iron supplementation: 3mg/kg/day
+- Begin catch-up growth monitoring
+- Discharge criteria: Appetite returned, infections controlled, weight gain >5g/kg/day for 3 consecutive days
+
+SECTION 3: SAM MANAGEMENT — COMMUNITY-BASED (CMAM)
+
+For SAM without medical complications (passes appetite test, alert, no edema):
+- Provide Ready-to-Use Therapeutic Food (RUTF) or locally prepared energy-dense food
+- RUTF dose: 175 kcal/kg/day divided into 6-8 feeds
+- Weekly follow-up at Anganwadi centre
+- MUAC and weight monitoring at each visit
+- Recovery criteria: MUAC above 12.5 cm for 2 consecutive visits
+
+Locally prepared therapeutic food (where RUTF not available):
+- Recipe 1: Roasted wheat flour + roasted Bengal gram + sugar + oil (4:2:1:1 ratio)
+- Recipe 2: Rice/wheat khichdi with added oil, jaggery, and groundnut powder
+- Target: At least 175 kcal/kg/day, protein 5g/kg/day
+
+SECTION 4: MAM MANAGEMENT
+
+Community-based management through Anganwadi:
+- Supplementary feeding through ICDS (Integrated Child Development Services)
+- Take-Home Ration (THR): 500 kcal and 12-15g protein per day for children
+- Hot Cooked Meal at Anganwadi centre: For children 3-6 years
+- Nutrition and Health Education for mothers
+
+Home-based diet recommendations:
+- Include energy-dense foods: oil, ghee, butter in every meal
+- Include protein: dal, eggs, milk, groundnuts
+- Include micronutrients: green leafy vegetables, fruits
+- Feed 5-6 times per day (3 meals + 2-3 snacks)
+- Continue breastfeeding if under 2 years
+
+Supplementation:
+- Iron and Folic Acid: As per WIFS (Weekly Iron Folic Acid Supplementation)
+  Children 6-59 months: 20 drops (20mg iron) + 100mcg folic acid biweekly
+- Vitamin A: 9 months and every 6 months until 5 years
+- Deworming: Albendazole 400mg every 6 months (after 1 year of age)
+- Zinc: 20mg daily during and for 14 days after each diarrhea episode
+
+SECTION 5: VITAMIN AND MINERAL DEFICIENCIES
+
+Vitamin A Deficiency:
+- Night blindness, Bitot's spots, corneal xerosis
+- Prevention: Vitamin A supplementation every 6 months
+- Treatment: 200,000 IU on Day 1, Day 2, and Day 15
+- Refer immediately if corneal ulceration
+
+Iron Deficiency Anemia:
+- Pallor of palms, nails, conjunctivae, tongue
+- Classification: Mild (Hb 10-11), Moderate (Hb 7-10), Severe (Hb below 7)
+- Severe anemia: Refer immediately for possible transfusion
+- Moderate: Iron syrup 3mg/kg/day for 3 months + folic acid
+- Dietary counseling: Include iron-rich foods (jaggery, green leafy vegetables, eggs)
+
+Iodine Deficiency:
+- Goiter (enlarged thyroid), developmental delays
+- Prevention: Use iodized salt exclusively
+- Refer for assessment if goiter detected
+
+SECTION 6: INFANT AND YOUNG CHILD FEEDING (IYCF)
+
+WHO/NHM Recommendations:
+- 0-6 months: Exclusive breastfeeding. No water, no other foods.
+- 6-8 months: Continue breastfeeding + 2-3 meals of semi-solid food
+  Start with mashed rice/roti with dal, mashed vegetables, mashed fruits
+- 9-11 months: Continue breastfeeding + 3-4 meals of semi-solid/soft food
+  Include egg, fish, chicken (if non-vegetarian), paneer, curd
+- 12-24 months: Continue breastfeeding + 3-4 meals of family food
+  Add oil/ghee to every meal for energy density
+
+Responsive feeding:
+- Feed child directly, assist older children
+- Feed slowly and patiently
+- Do not force feed
+- If child refuses, try different food combinations
+- Minimize distractions during feeding
+
+SECTION 7: GROWTH MONITORING AND PROMOTION
+
+Monthly activities at Anganwadi:
+- Weigh all children under 5 years
+- Plot weight on growth card (Mother-Child Protection Card)
+- Identify growth faltering (flattening or declining growth curve)
+- Measure MUAC for children 6 months to 5 years
+- Counsel mothers on feeding and care practices
+
+Red flags for immediate action:
+- Weight loss for 2 consecutive months
+- MUAC in red zone (below 11.5 cm)
+- Bilateral pitting edema
+- Visible severe wasting
+- Child not gaining weight despite supplementary feeding
+
+Follow-up schedule:
+- Normal children: Monthly at Anganwadi
+- MAM children: Biweekly at Anganwadi + home visits
+- SAM children (community-managed): Weekly at Anganwadi + weekly home visits
+- SAM with complications: Admit to NRC. Follow up after discharge weekly for 2 months.
+
+SECTION 8: ANGANWADI WORKER RESPONSIBILITIES
+
+Daily activities:
+- Provide supplementary nutrition to children and pregnant/lactating women
+- Conduct pre-school education for 3-6 year olds
+- Record attendance and nutrition status
+
+Monthly activities:
+- Growth monitoring of all registered children
+- Identify malnourished children and refer as needed
+- Conduct nutrition and health education sessions
+- Coordinate with ASHA worker for home visits
+
+Referral criteria:
+- SAM with complications → NRC/District Hospital immediately
+- SAM without complications → PHC for assessment, then CMAM
+- MAM not improving after 2 months → PHC for assessment
+- Any sick child with danger signs → PHC/Hospital immediately
+
+SECTION 9: POSHAN ABHIYAAN (NATIONAL NUTRITION MISSION)
+
+Key targets:
+- Reduce stunting by 2% per year (from 38.4% to target of 25%)
+- Reduce anemia among young children by 3% per year
+- Reduce low birth weight by 2% per year
+
+Community-based events:
+- Monthly VHSND (Village Health Sanitation and Nutrition Day)
+- Annual Poshan Maah (Nutrition Month) — September
+- Annaprashan Diwas (Complementary Feeding Day)
+
+Technology tools:
+- ICDS-CAS (Common Application Software) for real-time tracking
+- Poshan Tracker app for Anganwadi workers
+- Growth monitoring using digital weighing scales

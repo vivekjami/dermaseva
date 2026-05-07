@@ -1,0 +1,118 @@
+WHO Skin Disease Guidelines for Primary Healthcare Workers
+
+SECTION 1: DERMATOPHYTOSIS (FUNGAL INFECTIONS)
+
+Tinea corporis (Ringworm)
+Clinical features: Circular or ring-shaped scaly plaques with central clearing.
+Itching is common. May be single or multiple lesions.
+Treatment: Topical antifungal (Clotrimazole 1%, Miconazole 2%) for 2-4 weeks.
+Refer: If immunocompromised, extensive disease, or treatment failure.
+
+Tinea pedis (Athlete's foot)
+Scaling, maceration between toes. Itching and burning.
+Treatment: Keep feet dry. Topical antifungal for 4 weeks.
+
+Tinea capitis (Scalp ringworm)
+Scaly patches on scalp with hair loss. Common in children.
+Requires systemic antifungal (not topical alone). Refer to physician.
+
+Pityriasis versicolor
+Hypo or hyperpigmented macules on trunk. Fine scaling.
+Treatment: Ketoconazole 2% shampoo or selenium sulfide applied topically.
+Recurrence is common in tropical climates.
+
+SECTION 2: SCABIES
+
+Caused by Sarcoptes scabiei var hominis mite.
+Symptoms: Intense itching, worse at night. Burrows in web spaces of fingers,
+wrists, belt line, genitals. Secondary excoriation common.
+Treatment: Permethrin 5% cream (first-line). Apply to whole body from neck down.
+Leave overnight (8-12 hours). Repeat after 1 week.
+Benzyl benzoate 25% lotion is an alternative in resource-limited settings.
+All household and close contacts must be treated simultaneously.
+Wash and hot-dry all clothing and bedding.
+
+SECTION 3: ECZEMA AND DERMATITIS
+
+Atopic Dermatitis
+Chronic pruritic inflammatory condition. Associated with asthma and allergic rhinitis.
+Features: Dry skin, lichenification, excoriation. Flexural involvement in older children/adults.
+Management: Regular emollients (moisturizers). Avoid triggers (soap, wool, sweat).
+Mild-moderate: Low-potency topical corticosteroids for flares.
+Refer: Moderate-severe disease requiring potent steroids or systemic therapy.
+
+Contact Dermatitis
+Irritant contact dermatitis: From repeated contact with irritants (detergents, water).
+Allergic contact dermatitis: Type IV hypersensitivity reaction.
+Features: Erythema, vesicles, weeping at site of contact.
+Management: Identify and avoid causative agent. Calamine for mild symptoms.
+Topical corticosteroids for inflammation. Refer if severe.
+
+SECTION 4: BACTERIAL SKIN INFECTIONS
+
+Impetigo
+Superficial bacterial infection. Honey-colored crusted lesions. Common in children.
+Caused by Staphylococcus aureus or Streptococcus pyogenes.
+Treatment: Topical mupirocin for localized disease. Oral antibiotics if extensive.
+
+Cellulitis
+Deep skin infection causing spreading erythema, warmth, swelling, fever.
+Requires systemic antibiotics. Refer immediately if fever or rapid spread.
+
+Folliculitis
+Infection of hair follicles. Small pustules around hair follicles.
+Usually responds to topical antiseptics. Refer recurrent cases.
+
+SECTION 5: LEPROSY (HANSEN'S DISEASE)
+
+Caused by Mycobacterium leprae. Affects skin and peripheral nerves.
+Clinical features:
+- Hypopigmented or reddish patches with reduced or absent sensation
+- Thickened peripheral nerves
+- Weakness or numbness in hands and feet
+- Skin nodules (lepromatous form)
+
+Diagnosis: Loss of sensation in skin patch is pathognomonic.
+Treatment: Multi-drug therapy (MDT) under physician supervision only.
+Do not attempt treatment at primary level without specialist confirmation.
+This is a notifiable disease. Report all suspected cases to district health officer.
+
+SECTION 6: SKIN CANCER
+
+Warning signs (ABCDE criteria):
+A - Asymmetry: One half does not match the other
+B - Border: Irregular, ragged, or blurred edges
+C - Color: Variation in color (brown, black, red, white)
+D - Diameter: Larger than 6mm (pencil eraser size)
+E - Evolution: Changing in size, shape, or color
+
+Non-healing ulcers, especially on sun-exposed skin in elderly patients.
+Refer ALL suspicious lesions immediately to district hospital.
+Do not biopsy or treat at primary level.
+
+SECTION 7: HEAT-RELATED SKIN CONDITIONS
+
+Miliaria (Heat Rash, Prickly Heat)
+Caused by blocked eccrine sweat glands in hot, humid conditions.
+Miliaria rubra: Red papules and vesicles. Itching and prickling sensation.
+Management: Cool environment, loose cotton clothing, talc-free powder.
+Avoid occlusive clothing. Usually self-limiting in cooler conditions.
+
+SECTION 8: WHEN TO REFER
+
+Immediate referral (same day):
+- Suspected leprosy
+- Suspected malignancy
+- Cellulitis with systemic features
+- Extensive skin loss or blistering
+- Anaphylaxis
+
+Urgent referral (within 24-48 hours):
+- Moderate to severe eczema
+- Infected scabies
+- Impetigo in neonate or immunocompromised
+
+Routine referral:
+- Treatment failure after appropriate therapy
+- Uncertain diagnosis
+- Recurrent conditions requiring investigation

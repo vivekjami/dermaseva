@@ -1,0 +1,153 @@
+/**
+ * whisper-engine.ts — Offline STT fallback using whisper.rn (whisper.cpp).
+ *
+ * Used ONLY when:
+ * 1. Device is offline (airplane mode), AND
+ * 2. Google doesn't have an offline model for the selected language
+ *    (e.g., Telugu, Tamil, Kannada, Marathi)
+ *
+ * The multilingual ggml-small-q5_1 model (~181MB) supports ALL languages
+ * with a single file, providing much better accuracy for regional languages.
+ */
+
+// @ts-expect-error - whisper.rn types don't resolve with our tsconfig
+import { initWhisper, type WhisperContext } from 'whisper.rn';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const MODEL_FILENAME = 'ggml-small-q5_1.bin';
+const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin';
+
+function getModelDir(): string {
+  return `${FileSystem.documentDirectory}whisper/`;
+}
+
+function getModelPath(): string {
+  return `${getModelDir()}${MODEL_FILENAME}`;
+}
+
+// ─── Singleton context ─────────────────────────────────────────────────────
+let ctx: WhisperContext | null = null;
+
+export function isWhisperLoaded(): boolean {
+  return ctx !== null;
+}
+
+export async function cleanOldModels(): Promise<void> {
+  const dir = getModelDir();
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) return;
+  const files = await FileSystem.readDirectoryAsync(dir);
+  for (const file of files) {
+    if (file !== MODEL_FILENAME && file.endsWith('.bin')) {
+      await FileSystem.deleteAsync(`${dir}${file}`, { idempotent: true });
+    }
+  }
+}
+
+export async function isWhisperDownloaded(): Promise<boolean> {
+  await cleanOldModels();
+  const info = await FileSystem.getInfoAsync(getModelPath());
+  return info.exists;
+}
+
+// Language code mapping: BCP-47 → Whisper language code
+const WHISPER_LANG_MAP: Record<string, string> = {
+  'en-US': 'en', 'en-IN': 'en',
+  'hi-IN': 'hi',
+  'te-IN': 'te',
+  'ta-IN': 'ta',
+  'kn-IN': 'kn',
+  'mr-IN': 'mr',
+};
+
+const WHISPER_PROMPTS: Record<string, string> = {
+  'te': 'లక్షణాలు చర్మం దురద జ్వరం నొప్పి',
+  'ta': 'அறிகுறிகள் தோல் அரிப்பு காய்ச்சல் வலி',
+  'kn': 'ರೋಗಲಕ್ಷಣಗಳು ಚರ್ಮ ತುರಿಕೆ ಜ್ವರ ನೋವು',
+  'mr': 'लक्षणे त्वचा खाज ताप वेदना',
+  'hi': 'लक्षण त्वचा खुजली बुखार दर्द',
+  'en': '',
+};
+
+export async function downloadWhisperModel(
+  onProgress?: (pct: number) => void,
+): Promise<void> {
+  const dir = getModelDir();
+  const dirInfo = await FileSystem.getInfoAsync(dir);
+  if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+
+  const dest = getModelPath();
+  const download = FileSystem.createDownloadResumable(
+    MODEL_URL,
+    dest,
+    {},
+    (progress) => {
+      if (onProgress && progress.totalBytesExpectedToWrite > 0) {
+        const pct = Math.round(
+          (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100,
+        );
+        onProgress(pct);
+      }
+    },
+  );
+  const result = await download.downloadAsync();
+  if (!result || result.status !== 200) {
+    throw new Error(`Download failed with status ${result?.status}`);
+  }
+}
+
+export async function loadWhisperModel(): Promise<void> {
+  if (ctx) return; // Already loaded
+  const modelPath = getModelPath();
+  const exists = await isWhisperDownloaded();
+  if (!exists) throw new Error('Whisper model not downloaded');
+
+  ctx = await initWhisper({ filePath: modelPath });
+}
+
+export async function releaseWhisperModel(): Promise<void> {
+  if (ctx) {
+    await ctx.release();
+    ctx = null;
+  }
+}
+
+export async function transcribeAudio(
+  audioPath: string,
+  locale: string,
+): Promise<{ text: string }> {
+  if (!ctx) throw new Error('Whisper not loaded');
+
+  const lang = WHISPER_LANG_MAP[locale] ?? locale.split('-')[0] ?? 'en';
+  console.warn(`[Whisper] Transcribing: lang=${lang}, path=${audioPath}`);
+
+  const { promise } = ctx.transcribe(audioPath, {
+    language: lang,
+    prompt: WHISPER_PROMPTS[lang] ?? '',
+    maxLen: 1,
+    tokenTimestamps: false,
+    nThreads: 4,
+    beamSize: 1,
+    bestOf: 1,
+    temperature: 0.0,
+    temperatureInc: 0.0,
+  });
+
+  const result = await promise;
+  console.warn(`[Whisper] Result: "${result.result}", lang=${result.language}, aborted=${result.isAborted}`);
+
+  if (result.isAborted) {
+    throw new Error('Transcription was aborted');
+  }
+
+  let text = (result.result ?? '').trim();
+  
+  const lowerText = text.toLowerCase().replace(/[^a-z]/g, '');
+  const hallucinations = ['skull', 'silence', 'blank', 'thankyou', 'thanksforwatching', 'subsby', 'subtitlesby'];
+  if (hallucinations.includes(lowerText)) {
+    console.warn(`[Whisper] Filtered hallucination: "${text}"`);
+    text = '';
+  }
+
+  return { text };
+}

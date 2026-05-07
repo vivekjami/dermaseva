@@ -14,16 +14,19 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vivekjami.dermaseva"
     },
     "android": {
       "package": "com.vivekjami.dermaseva",
-      "versionCode": 1,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "permissions": ["android.permission.CAMERA"],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
       "allowBackup": false
     },
     "web": {
@@ -33,12 +36,44 @@
     },
     "plugins": [
       "expo-router",
-      "expo-camera",
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-asset",
+      [
+        "llama.rn",
+        {
+          "enableOpenCL": true
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "DermaSeva needs microphone access to listen to symptom descriptions.",
+          "speechRecognitionPermission": "DermaSeva needs speech recognition to transcribe your voice.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "assetBundlePatterns": [
+      "docs/**/*",
+      "assets/**/*"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f7cdb65b-4437-4cff-b90e-fb7a39bdfb1a"
+      }
     }
   }
 }
